@@ -1,14 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJWT } from '../utils/auth';
 
-interface AuthRequest extends Request {
-  user?: {
-    userId: string;
-    role: string;
-  };
-}
+// 使用types/express.d.ts中已定义的Request扩展接口
+// interface AuthRequest extends Request {
+//   user?: {
+//     id: string;
+//     role: string;
+//   };
+// }
 
-const authenticate = (req: AuthRequest, res: Response, next: NextFunction): void => {
+const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   // 获取Authorization头
   const authHeader = req.headers.authorization;
   
@@ -35,23 +36,23 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction): void
   }
   
   // 将用户信息附加到请求对象
-  req.user = {
-    userId: decoded.userId,
-    role: decoded.role
-  };
+    (req as any).user = {
+      id: decoded.userId,
+      role: decoded.role
+    };
   
   next();
 };
 
 // 角色权限检查中间件
 export const authorize = (...allowedRoles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (!req.user) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!(req as any).user) {
       res.status(401).json({ message: '未认证' });
       return;
     }
     
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!allowedRoles.includes((req as any).user.role)) {
       res.status(403).json({ message: '没有足够的权限执行此操作' });
       return;
     }

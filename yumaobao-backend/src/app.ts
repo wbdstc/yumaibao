@@ -2,12 +2,17 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 
 // 路由导入
 import userRoutes from './routes/userRoutes';
+import projectRoutes from './routes/projectRoutes';
+import modelRoutes from './routes/modelRoutes';
+import embeddedPartRoutes from './routes/embeddedPartRoutes';
+import mobileRoutes from './routes/mobileRoutes';
 
-// 数据库导入（暂时注释掉）
-// import sequelize from './config/database';
+// 数据库导入
+import { connectToMongoDB } from './config/mongodb';
 
 // 加载环境变量
 dotenv.config();
@@ -27,24 +32,33 @@ app.get('/health', (_req, res) => {
 
 // API路由注册
 app.use('/api/users', userRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/models', modelRoutes);
+app.use('/api/embedded-parts', embeddedPartRoutes);
+app.use('/api/mobile', mobileRoutes);
 
-// 启动服务器（暂时跳过数据库同步）
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`服务器已启动，监听端口 ${PORT}`);
-  console.log('服务器已启动，数据库同步功能暂时已禁用');
-});
+// 静态文件服务
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// 数据库同步代码（暂时注释掉）
-/*
-sequelize.sync({ force: false }) // force: false 表示不删除已有表
-  .then(() => {
-    console.log('数据库连接成功并同步完成');
-  })
-  .catch((error) => {
-    console.error('数据库连接或同步失败:', error);
+// 数据库连接和同步
+async function startServer() {
+  try {
+    // 连接MongoDB
+    await connectToMongoDB();
+    console.log('MongoDB数据库连接成功');
+    
+    // 启动服务器
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`服务器已启动，监听端口 ${PORT}`);
+    });
+  } catch (error) {
+    console.error('服务器启动失败:', error);
     process.exit(1);
-  });
-*/
+  }
+}
+
+// 启动服务器
+startServer();
 
 export default app;

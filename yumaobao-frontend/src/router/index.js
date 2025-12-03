@@ -4,10 +4,9 @@ import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
 import Dashboard from '../views/Dashboard.vue'
 import ProjectManagement from '../views/ProjectManagement.vue'
-// 以下组件暂未创建，先注释
-// import BIMVisualization from '../views/BIMVisualization.vue'
-// import EmbeddedPartManagement from '../views/EmbeddedPartManagement.vue'
-// import QRCodeScan from '../views/QRCodeScan.vue'
+import BIMVisualization from '../views/BIMVisualization.vue'
+import EmbeddedPartManagement from '../views/EmbeddedPartManagement.vue'
+import QRCodeScan from '../views/QRCodeScan.vue'
 // import UserManagement from '../views/UserManagement.vue'
 
 const routes = [
@@ -38,25 +37,24 @@ const routes = [
         component: ProjectManagement,
         meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }
       },
-      // 以下组件暂未创建，先注释
-      // {
-      //   path: 'bim',
-      //   name: 'BIMVisualization',
-      //   component: BIMVisualization,
-      //   meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
-      // },
-      // {
-      //   path: 'embedded-parts',
-      //   name: 'EmbeddedPartManagement',
-      //   component: EmbeddedPartManagement,
-      //   meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
-      // },
-      // {
-      //   path: 'scan',
-      //   name: 'QRCodeScan',
-      //   component: QRCodeScan,
-      //   meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager'] }
-      // },
+      {
+        path: 'bim',
+        name: 'BIMVisualization',
+        component: BIMVisualization,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
+      },
+      {
+        path: 'embedded-parts',
+        name: 'EmbeddedPartManagement',
+        component: EmbeddedPartManagement,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
+      },
+      {
+        path: 'scan',
+        name: 'QRCodeScan',
+        component: QRCodeScan,
+        meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager'] }
+      },
       // {
       //   path: 'users',
       //   name: 'UserManagement',

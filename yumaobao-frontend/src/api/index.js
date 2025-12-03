@@ -130,23 +130,47 @@ export default {
   // BIM模型相关API
   bimModel: {
     getBIMModels(params) {
-      return api.get('/bim-models', { params })
+      return api.get('/models', { params })
     },
     getBIMModel(id) {
-      return api.get(`/bim-models/${id}`)
+      return api.get(`/models/${id}`)
+    },
+    downloadBIMModel(id) {
+      return api.get(`/models/${id}/download`, { responseType: 'blob' })
     },
     uploadBIMModel(data) {
-      return api.post('/bim-models', data, {
+      return api.post('/models/upload', data, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
     },
     updateBIMModel(id, data) {
-      return api.put(`/bim-models/${id}`, data)
+      return api.put(`/models/${id}`, data)
     },
     deleteBIMModel(id) {
-      return api.delete(`/bim-models/${id}`)
+      return api.delete(`/models/${id}`)
+    }
+  },
+  // 移动端相关API
+  mobile: {
+    scanQRCode(data) {
+      return api.post('/mobile/scan-qrcode', data)
+    },
+    installEmbeddedPart(id) {
+      return api.post(`/mobile/embedded-parts/${id}/install`)
+    },
+    inspectEmbeddedPart(id) {
+      return api.post(`/mobile/embedded-parts/${id}/inspect`)
+    },
+    getMobileProjects() {
+      return api.get('/mobile/projects')
+    },
+    getProjectEmbeddedParts(projectId) {
+      return api.get(`/mobile/projects/${projectId}/embedded-parts`)
+    },
+    getMobileTasks() {
+      return api.get('/mobile/tasks')
     }
   }
 }

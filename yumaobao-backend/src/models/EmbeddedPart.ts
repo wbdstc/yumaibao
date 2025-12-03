@@ -1,7 +1,9 @@
-import { Model, DataTypes } from 'sequelize';
-import sequelize from '../config/database';
+import { ObjectId, Collection, Document } from 'mongodb';
+import { getDB } from '../config/mongodb';
+import { v4 as uuidv4 } from 'uuid';
 
-interface EmbeddedPartAttributes {
+export interface EmbeddedPartAttributes {
+  _id?: ObjectId;
   id: string;
   projectId: string;
   name: string;
@@ -9,7 +11,7 @@ interface EmbeddedPartAttributes {
   modelNumber: string;
   description?: string;
   location: string;
-  coordinates: string; // JSON格式的三维坐标
+  coordinates: any; // JSON格式的三维坐标
   qrCodeData: string;
   qrCodeUrl: string;
   status: 'pending' | 'installed' | 'inspected' | 'rejected';
@@ -21,104 +23,105 @@ interface EmbeddedPartAttributes {
   updatedAt: Date;
 }
 
-class EmbeddedPart extends Model<EmbeddedPartAttributes> implements EmbeddedPartAttributes {
-  public id!: string;
-  public projectId!: string;
-  public name!: string;
-  public type!: string;
-  public modelNumber!: string;
-  public description?: string;
-  public location!: string;
-  public coordinates!: string;
-  public qrCodeData!: string;
-  public qrCodeUrl!: string;
-  public status!: 'pending' | 'installed' | 'inspected' | 'rejected';
-  public installationDate?: Date;
-  public inspectorId?: string;
-  public inspectionDate?: Date;
-  public notes?: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+export interface EmbeddedPartCreationAttributes {
+  id?: string;
+  projectId: string;
+  name: string;
+  type: string;
+  modelNumber: string;
+  description?: string;
+  location: string;
+  coordinates: any;
+  qrCodeData: string;
+  qrCodeUrl: string;
+  status?: 'pending' | 'installed' | 'inspected' | 'rejected';
+  installationDate?: Date;
+  inspectorId?: string;
+  inspectionDate?: Date;
+  notes?: string;
 }
 
-EmbeddedPart.init(
-  {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    projectId: {
-      type: DataTypes.UUID,
-      allowNull: false,
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    type: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    modelNumber: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    description: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    location: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    coordinates: {
-      type: DataTypes.JSON,
-      allowNull: false,
-    },
-    qrCodeData: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-    },
-    qrCodeUrl: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    status: {
-      type: DataTypes.ENUM('pending', 'installed', 'inspected', 'rejected'),
-      defaultValue: 'pending',
-      allowNull: false,
-    },
-    installationDate: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    inspectorId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-    },
-    inspectionDate: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    notes: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    createdAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    updatedAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-  },
-  {
-    sequelize,
-    tableName: 'embedded_parts',
-    timestamps: true,
-  }
-);
+class EmbeddedPartModel {
+  private collection: Collection<Document> | null = null;
 
-export default EmbeddedPart;
+  // 延迟获取集合实例，确保MongoDB连接已建立
+  private getCollection(): Collection<Document> {
+    if (!this.collection) {
+      const db = getDB();
+      if (!db) {
+        throw new Error('MongoDB连接未建立');
+      }
+      this.collection = db.collection('embedded_parts');
+    }
+    return this.collection as Collection<Document>;
+  }
+
+  // 创建新嵌入部件
+  async create(partData: EmbeddedPartCreationAttributes): Promise<EmbeddedPartAttributes> {
+    const now = new Date();
+    const part: EmbeddedPartAttributes = {
+      id: uuidv4(),
+      ...partData,
+      status: partData.status || 'pending',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await this.getCollection().insertOne(part);
+    return { ...part, _id: result.insertedId };
+  }
+
+  // 根据ID查找嵌入部件
+  async findById(id: string): Promise<EmbeddedPartAttributes | null> {
+    const part = await this.getCollection().findOne<EmbeddedPartAttributes>({ id });
+    return part;
+  }
+
+  // 根据项目ID查找嵌入部件
+  async findByProjectId(projectId: string): Promise<EmbeddedPartAttributes[]> {
+    const parts = await this.getCollection().find<EmbeddedPartAttributes>({ projectId }).toArray();
+    return parts;
+  }
+
+  // 查找所有嵌入部件
+  async findAll(query?: any): Promise<EmbeddedPartAttributes[]> {
+    const parts = await this.getCollection().find<EmbeddedPartAttributes>(query || {}).toArray();
+    return parts;
+  }
+
+  // 更新嵌入部件信息
+  async update(id: string, partData: Partial<EmbeddedPartCreationAttributes>): Promise<EmbeddedPartAttributes | null> {
+    const updateData = { ...partData, updatedAt: new Date() };
+    const result = await this.getCollection().findOneAndUpdate(
+      { id },
+      { $set: updateData },
+      { returnDocument: 'after' }
+    );
+    return result ? result.value : null;
+  }
+
+  // 批量更新嵌入部件信息
+  async batchUpdate(ids: string[], partData: Partial<EmbeddedPartCreationAttributes>): Promise<number> {
+    const updateData = { ...partData, updatedAt: new Date() };
+    const result = await this.getCollection().updateMany(
+      { id: { $in: ids } },
+      { $set: updateData }
+    );
+    return result.modifiedCount;
+  }
+
+  // 删除嵌入部件
+  async delete(id: string): Promise<boolean> {
+    const result = await this.getCollection().deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // 根据项目ID删除所有嵌入部件
+  async deleteByProjectId(projectId: string): Promise<boolean> {
+    const result = await this.getCollection().deleteMany({ projectId });
+    return result.deletedCount > 0;
+  }
+}
+
+// 导出单例实例
+export default new EmbeddedPartModel();
