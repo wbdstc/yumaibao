@@ -1,5 +1,0 @@
-export * from './AcApContext'
-export * from './AcApDocument'
-export * from './AcApDocManager'
-export * from './AcApGlobalFunc'
-export * from './AcApSettingManager'
