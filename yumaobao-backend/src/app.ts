@@ -21,7 +21,12 @@ dotenv.config();
 const app = express();
 
 // 配置中间件
-app.use(cors());
+app.use(cors({
+  origin: '*', // 允许所有来源
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // 允许所有方法
+  allowedHeaders: ['Origin', 'Content-Type', 'Authorization'], // 允许所有头
+  credentials: true // 允许凭证
+}));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 

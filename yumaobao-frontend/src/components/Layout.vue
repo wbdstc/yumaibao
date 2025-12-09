@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container page-transition">
     <!-- 侧边导航栏 -->
     <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="logo">
@@ -157,11 +157,13 @@ export default {
 /* 侧边栏 */
 .sidebar {
   width: 220px;
-  background-color: #001529;
+  background: linear-gradient(180deg, var(--construction-blue) 0%, #0f1e30 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  border-right: 1px solid var(--steel-silver);
 }
 
 .sidebar-collapsed {
@@ -171,13 +173,17 @@ export default {
 .logo {
   padding: 20px;
   text-align: center;
-  border-bottom: 1px solid #1f2f3d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
 }
 
 .logo h2 {
   margin: 0;
   color: #fff;
   font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-menu {
@@ -186,14 +192,35 @@ export default {
   background-color: transparent;
 }
 
-.el-menu-item {
-  color: rgba(255, 255, 255, 0.65) !important;
+:deep(.el-menu-item) {
+  color: rgba(255, 255, 255, 0.8) !important;
+  border-left: 3px solid transparent;
+  transition: all 0.3s ease !important;
+  padding: 12px 16px !important;
+  font-size: 14px !important;
 }
 
-.el-menu-item:hover,
-.el-menu-item.is-active {
-  background-color: #1890ff !important;
+:deep(.el-menu-item:hover) {
+  background-color: rgba(255, 255, 255, 0.1) !important;
   color: #fff !important;
+  border-left-color: var(--safety-orange) !important;
+}
+
+:deep(.el-menu-item.is-active) {
+  background-color: rgba(255, 115, 22, 0.2) !important;
+  color: #fff !important;
+  border-left-color: var(--safety-orange) !important;
+  font-weight: 600 !important;
+}
+
+/* 侧边栏图标样式 */
+:deep(.el-icon) {
+  font-size: 18px !important;
+  margin-right: 8px !important;
+}
+
+.sidebar-collapsed :deep(.el-icon) {
+  margin-right: 0 !important;
 }
 
 /* 主内容区域 */
@@ -202,50 +229,75 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background-color: #f8f9fa;
 }
 
 /* 顶部导航栏 */
 .top-header {
   height: 60px;
-  background-color: #fff;
-  border-bottom: 1px solid #e8e8e8;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  border-bottom: 1px solid var(--steel-silver);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.top-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
 }
 
 .menu-toggle {
-  font-size: 20px;
+  font-size: 24px;
   cursor: pointer;
-  color: #1890ff;
+  color: var(--construction-blue);
+  transition: all 0.3s ease;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.menu-toggle:hover {
+  color: var(--safety-orange);
+  background-color: rgba(249, 115, 22, 0.1);
 }
 
 .user-info {
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 8px 12px;
   border-radius: 4px;
-  transition: background-color 0.3s;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .user-info:hover {
-  background-color: #f5f7fa;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 .user-info span {
   margin-left: 8px;
-  color: #333;
+  color: var(--construction-blue);
+  font-weight: 500;
 }
 
 /* 内容区域 */
 .content-wrapper {
   flex: 1;
-  padding: 24px;
+  padding: clamp(16px, 2vw, 24px);
   overflow-y: auto;
-  background-color: #f5f7fa;
+  background-color: #f8f9fa;
 }
 
 /* 响应式设计 */
@@ -271,15 +323,66 @@ export default {
   .content-wrapper {
     padding: 16px;
   }
+  
+  /* 移动端底部导航栏 */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 56px;
+    background: linear-gradient(135deg, var(--construction-blue) 0%, #1a2f49 100%);
+    border-top: 1px solid var(--steel-silver);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 999;
+  }
+  
+  .mobile-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 4px 0;
+  }
+  
+  .mobile-nav-item:hover,
+  .mobile-nav-item.active {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .mobile-nav-item .el-icon {
+    font-size: 20px;
+    margin-bottom: 4px;
+  }
+  
+  .mobile-nav-item span {
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 480px) {
   .content-wrapper {
     padding: 8px;
+    margin-bottom: 56px; /* 为底部导航栏留出空间 */
   }
   
   .top-header {
     padding: 0 12px;
+    height: 56px;
+  }
+  
+  .logo h2 {
+    font-size: 18px;
+  }
+  
+  .menu-toggle {
+    font-size: 20px;
   }
 }
 </style>

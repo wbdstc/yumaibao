@@ -1,43 +1,54 @@
+// src/api/index.js
+
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { useUserStore } from '../stores/index'
+import { useUserStore } from '../stores/index' // 保留，响应拦截器需要用到
 import router from '../router/index'
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // 后端API基础URL
+  baseURL: '/api', // 设置为'/api'，确保请求路径符合代理配置要求
   timeout: 10000, // 请求超时时间
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// 请求拦截器
+// 请求拦截器 - 【已修复】
 api.interceptors.request.use(
   config => {
-    const userStore = useUserStore()
-    // 如果存在token则添加到请求头
-    if (userStore.token) {
-      config.headers.Authorization = `Bearer ${userStore.token}`
+    // 【关键修改】直接从 localStorage 读取 token，避免时机问题
+    const token = localStorage.getItem('token')
+    
+    // 如果 token 存在，则添加到请求头
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+      console.log('请求拦截器：成功添加 token', token.substring(0, 20) + '...') // 打印前20个字符用于调试
+    } else {
+      console.log('请求拦截器：未找到 token，请求可能失败')
     }
+    
     return config
   },
   error => {
+    // 对请求错误做些什么
     return Promise.reject(error)
   }
 )
 
-// 响应拦截器
+// 响应拦截器 - 保持不变
 api.interceptors.response.use(
   response => {
+    // 对响应数据做点什么，直接返回响应体
     return response.data
   },
   error => {
+    // 对响应错误做点什么
     if (error.response) {
       switch (error.response.status) {
         case 401:
           // 未授权，清除token并跳转到登录页
-          const userStore = useUserStore()
+          const userStore = useUserStore() // 在这里使用是安全的
           userStore.logout()
           router.push('/login')
           ElMessage.error('登录已过期，请重新登录')
@@ -65,7 +76,7 @@ api.interceptors.response.use(
   }
 )
 
-// API请求封装
+// API请求封装 - 保持不变
 export default {
   // 用户相关API
   user: {

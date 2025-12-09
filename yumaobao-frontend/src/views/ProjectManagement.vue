@@ -1,5 +1,5 @@
 <template>
-  <div class="project-management-container">
+  <div class="project-management-container page-transition blueprint-bg">
     <!-- 页面标题和操作 -->
     <div class="page-header">
       <h2>项目管理</h2>
@@ -7,7 +7,6 @@
         type="primary" 
         @click="showAddProjectDialog"
         :disabled="!canCreateProject"
-        :tooltip="canCreateProject ? '' : '只有管理员或项目经理可以创建项目'"
       >
         <el-icon><Plus /></el-icon>
         新建项目
@@ -69,7 +68,7 @@
         <el-table-column prop="description" label="项目描述" min-width="200" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="120">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'under_construction' ? 'success' : scope.row.status === 'completed' ? 'info' : 'warning'">
+            <el-tag :class="['status-tag', scope.row.status === 'under_construction' ? 'tag-construction' : scope.row.status === 'completed' ? 'tag-completed' : 'tag-planning']">
               {{ scope.row.status === 'planning' ? '规划中' : scope.row.status === 'under_construction' ? '施工中' : '已完成' }}
             </el-tag>
           </template>
@@ -243,7 +242,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore, useUserStore } from '../stores/index'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -355,15 +354,24 @@ export default {
           return projectDate >= dateRange.value[0] && projectDate <= dateRange.value[1]
         })
       }
-
       return result
     })
 
-    // 检查用户是否有权限创建项目
-    const canCreateProject = computed(() => {
-      const role = userStore.userRole
-      return role === 'admin' || role === 'projectManager'
-    })
+    // 1. 用 ref 代替 computed
+    const canCreateProject = ref(false)
+    
+    // 2. 使用 watch 监听角色变化
+    watch(
+      () => userStore.userRole,
+      (newRole) => {
+        console.log('角色变化:', newRole)
+        canCreateProject.value = newRole === 'admin' || newRole === 'projectManager'
+        console.log('权限更新:', canCreateProject.value)
+      },
+      { immediate: true }
+    )
+
+
 
     // 显示新建项目对话框
     const showAddProjectDialog = () => {
@@ -525,6 +533,7 @@ export default {
       addProjectForm,
       editProjectForm,
       projectRules,
+      canCreateProject,
       showAddProjectDialog,
       showEditProjectDialog,
       handleAddProject,
@@ -544,7 +553,7 @@ export default {
 .project-management-container {
   width: 100%;
   height: 100%;
-  padding: 24px;
+  padding: clamp(16px, 2vw, 24px);
   box-sizing: border-box;
 }
 
@@ -557,22 +566,28 @@ export default {
 
 .page-header h2 {
   margin: 0;
-  font-size: 24px;
-  color: #333;
+  font-size: clamp(20px, 4vw, 28px);
+  color: var(--construction-blue);
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 /* 搜索和筛选 */
 .search-filter {
   margin-bottom: 24px;
   padding: 16px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  border: 1px solid var(--steel-silver);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* 项目列表 */
 .project-list-card {
-  border-radius: 8px;
+  border-radius: 4px;
   overflow-x: auto;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  border: 1px solid var(--steel-silver);
 }
 
 .pagination {
@@ -587,16 +602,99 @@ export default {
   gap: 8px;
 }
 
+/* 状态标签样式 */
+.tag-planning {
+  background-color: var(--warning-yellow);
+  color: white;
+  transform: perspective(100px) rotateX(5deg);
+}
+
+.tag-construction {
+  background-color: var(--complete-green);
+  color: white;
+  transform: perspective(100px) rotateX(5deg);
+}
+
+.tag-completed {
+  background-color: var(--construction-blue);
+  color: white;
+  transform: perspective(100px) rotateX(5deg);
+}
+
+/* 按钮样式优化 */
+.el-button {
+  border-radius: 4px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  transition: all 0.3s ease !important;
+}
+
+.el-button--primary {
+  background-color: var(--construction-blue) !important;
+  border-color: var(--construction-blue) !important;
+}
+
+.el-button--primary:hover {
+  background-color: #1a2f49 !important;
+  box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.el-button--warning {
+  background-color: var(--warning-yellow) !important;
+  border-color: var(--warning-yellow) !important;
+}
+
+.el-button--warning:hover {
+  background-color: #d97706 !important;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.el-button--danger {
+  background-color: var(--safety-orange) !important;
+  border-color: var(--safety-orange) !important;
+}
+
+.el-button--danger:hover {
+  background-color: #ea580c !important;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 表格样式优化 */
+:deep(.el-table) {
+  border: 1px solid var(--steel-silver) !important;
+  border-radius: 4px !important;
+  overflow: hidden !important;
+}
+
+:deep(.el-table__header-wrapper th) {
+  background-color: var(--construction-blue) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  border-right: 1px solid var(--steel-silver) !important;
+}
+
+:deep(.el-table__body-wrapper tr:hover) {
+  background-color: rgba(30, 58, 95, 0.05) !important;
+}
+
+:deep(.el-table__body-wrapper tr) {
+  transition: background-color 0.3s ease !important;
+}
+
+:deep(.el-table__body-wrapper td) {
+  border-right: 1px solid var(--steel-silver) !important;
+  border-bottom: 1px solid var(--steel-silver) !important;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .page-header h2 {
-    font-size: 20px;
+    gap: 16px;
   }
   
   /* 搜索筛选区域在小屏幕上垂直堆叠 */
@@ -614,7 +712,7 @@ export default {
   }
   
   /* 表格在小屏幕上调整 */
-  .el-table {
+  :deep(.el-table) {
     width: 100%;
     min-width: 800px;
   }
@@ -622,6 +720,12 @@ export default {
   /* 分页在小屏幕上居中 */
   .pagination {
     text-align: center;
+  }
+  
+  /* 按钮在小屏幕上调整 */
+  .el-button {
+    padding: 8px 12px !important;
+    font-size: 14px !important;
   }
 }
 
@@ -654,10 +758,68 @@ export default {
     width: 100px !important;
   }
   
-  /* 按钮在小屏幕上调整 */
-  .el-button {
-    padding: 8px 12px;
-    font-size: 14px;
+  /* 操作按钮在小屏幕上堆叠 */
+  :deep(.el-table__column--fixed-right .el-button) {
+    margin-bottom: 8px !important;
+    width: 100% !important;
+  }
+  
+  /* 移动端卡片式布局 */
+  .project-list-mobile {
+    display: none;
+  }
+  
+  @media (max-width: 600px) {
+    .project-list-table {
+      display: none;
+    }
+    
+    .project-list-mobile {
+      display: block;
+    }
+    
+    .project-card {
+      margin-bottom: 16px;
+      padding: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+      border: 1px solid var(--steel-silver);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+    
+    .project-card:hover {
+      box-shadow: 0 4px 16px rgba(30, 58, 95, 0.15);
+      transform: translateY(-2px);
+    }
+    
+    .project-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    
+    .project-card-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--construction-blue);
+    }
+    
+    .project-card-content {
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: var(--concrete-gray);
+    }
+    
+    .project-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--steel-silver);
+      margin-bottom: 12px;
+    }
   }
 }
 </style>

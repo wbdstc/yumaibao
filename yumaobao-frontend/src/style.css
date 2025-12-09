@@ -1,11 +1,20 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  /* 建筑行业主题变量 */
+  --construction-blue: #1E3A5F;
+  --concrete-gray: #6C757D;
+  --safety-orange: #F97316;
+  --steel-silver: #94A3B8;
+  --warning-yellow: #F59E0B;
+  --complete-green: #10B981;
+  
+  /* 基础变量 */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  color: var(--construction-blue);
+  background-color: #f8f9fa;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -24,10 +33,12 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-image: 
+    linear-gradient(rgba(30, 58, 95, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 95, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
 }
 
 h1 {
@@ -36,26 +47,137 @@ h1 {
 }
 
 button {
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: var(--construction-blue);
+  color: white;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: all 0.3s ease;
+  min-width: 44px;
+  min-height: 44px;
 }
 button:hover {
-  border-color: #646cff;
+  background-color: #1a2f49;
+  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.3);
+  transform: translateY(-1px);
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 2px solid var(--safety-orange);
+  outline-offset: 2px;
 }
 
-.card {
-  padding: 2em;
+/* 蓝图网格背景 */
+.blueprint-bg {
+  background-image: 
+    linear-gradient(rgba(30, 58, 95, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 95, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* 混凝土纹理背景 */
+.concrete-bg {
+  background-color: #f8f9fa;
+  background-image: 
+    radial-gradient(var(--concrete-gray) 1px, transparent 1px),
+    radial-gradient(var(--concrete-gray) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-position: 0 0, 25px 25px;
+  background-opacity: 0.1;
+}
+
+/* 卡片样式 */
+.construction-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  border: 1px solid var(--steel-silver);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.construction-card:hover {
+  box-shadow: 0 4px 16px rgba(30, 58, 95, 0.15);
+  transform: translateY(-2px);
+}
+
+/* 状态标签样式 */
+.status-tag {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 页面过渡效果 */
+.page-transition {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 按钮光泽效果 */
+.glossy-button {
+  background: linear-gradient(135deg, var(--construction-blue) 0%, #1a2f49 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.glossy-button::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    to bottom right,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(45deg);
+  transition: all 0.6s ease;
+}
+
+.glossy-button:hover::before {
+  animation: shine 0.6s ease-in-out;
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+  }
+  100% {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+  }
+}
+
+/* 响应式字体 */
+html {
+  font-size: clamp(14px, 2vw, 16px);
+}
+
+/* 触摸友好设计 */
+.touch-friendly {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 16px;
 }
 
 #app {
@@ -66,15 +188,21 @@ button:focus-visible {
   text-align: left;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* 全局滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--steel-silver);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--concrete-gray);
 }

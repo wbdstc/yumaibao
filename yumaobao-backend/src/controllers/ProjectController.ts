@@ -43,7 +43,7 @@ class ProjectController {
   static async createProject(req: Request, res: Response) {
     try {
       const { name, code, description, location, startDate, endDate, status } = req.body;
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
 
       if (!userId) {
         return res.status(401).json({ message: '未授权' });

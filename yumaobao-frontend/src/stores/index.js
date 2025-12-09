@@ -6,33 +6,53 @@ const pinia = createPinia()
 
 // 用户Store
 export const useUserStore = defineStore('user', {
-  state: () => ({
-    userInfo: JSON.parse(localStorage.getItem('user')) || null,
-    token: localStorage.getItem('token') || null
-  }),
+  state: () => {
+    // 从 localStorage 读取用户信息
+    const savedUser = localStorage.getItem('user')
+    const savedToken = localStorage.getItem('token')
+    
+    console.log('初始化 userStore，从 localStorage 读取:', {
+      user: savedUser,
+      token: savedToken
+    })
+    
+    return {
+      userInfo: savedUser ? JSON.parse(savedUser) : null,
+      token: savedToken || null
+    }
+  },
   getters: {
     isLoggedIn: (state) => !!state.token,
-    userRole: (state) => state.userInfo?.role || ''
+    userRole: (state) => {
+      const role = state.userInfo?.role || ''
+      console.log('userRole getter 被调用，返回:', role)
+      return role
+    }
   },
   actions: {
     login(user, token) {
+      console.log('login action 被调用:', { user, token })
       this.userInfo = user
       this.token = token
       localStorage.setItem('user', JSON.stringify(user))
       localStorage.setItem('token', token)
     },
     logout() {
+      console.log('logout action 被调用')
       this.userInfo = null
       this.token = null
       localStorage.removeItem('user')
       localStorage.removeItem('token')
     },
     updateUserInfo(info) {
+      console.log('updateUserInfo 被调用:', info)
       this.userInfo = { ...this.userInfo, ...info }
       localStorage.setItem('user', JSON.stringify(this.userInfo))
     }
   }
 })
+
+
 
 // 项目Store
 export const useProjectStore = defineStore('project', {

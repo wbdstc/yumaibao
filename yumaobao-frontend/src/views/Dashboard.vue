@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-container">
+  <div class="dashboard-container page-transition blueprint-bg">
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
@@ -26,7 +26,7 @@
 
     <!-- 统计卡片 -->
     <div class="stats-cards">
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ projectStats.totalProjects }}</div>
@@ -38,7 +38,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.totalParts }}</div>
@@ -50,7 +50,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.installedParts }}</div>
@@ -62,7 +62,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.inspectedParts }}</div>
@@ -74,7 +74,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.pendingParts }}</div>
@@ -86,7 +86,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card" shadow="hover">
+      <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ projectStats.completedProjects }}</div>
