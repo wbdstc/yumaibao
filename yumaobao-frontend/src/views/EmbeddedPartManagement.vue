@@ -15,6 +15,9 @@
             批量导入
           </el-button>
         </el-upload>
+        <el-button type="info" icon="Document" @click="downloadSampleTemplate">
+          下载示例模板
+        </el-button>
         <el-button type="success" icon="Plus" @click="showAddDialog">
           新增预埋件
         </el-button>
@@ -445,6 +448,65 @@ const handleBatchImport = async (data) => {
     console.error('批量导入失败:', error)
     ElMessage.error('批量导入失败')
   }
+}
+
+// 下载示例模板
+const downloadSampleTemplate = () => {
+  // 创建示例数据
+  const sampleData = [
+    {
+      projectId: '项目ID',
+      name: '预埋件名称',
+      type: '预埋件类型',
+      modelNumber: '型号规格',
+      description: '描述信息（可选）',
+      location: '安装位置',
+      coordinates: JSON.stringify({ x: 100, y: 200, z: 300 }) // 三维坐标
+    },
+    {
+      projectId: '项目ID',
+      name: '示例预埋件2',
+      type: '螺栓',
+      modelNumber: 'M20×100',
+      description: '高强度螺栓',
+      location: 'B区-3层-柱4',
+      coordinates: JSON.stringify({ x: 150, y: 250, z: 350 })
+    },
+    {
+      projectId: '项目ID',
+      name: '示例预埋件3',
+      type: '钢板',
+      modelNumber: '200×200×10',
+      description: '基础钢板',
+      location: 'A区-2层-梁6',
+      coordinates: JSON.stringify({ x: 200, y: 300, z: 400 })
+    }
+  ]
+  
+  // 创建工作簿和工作表
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.json_to_sheet(sampleData, {
+    header: ['projectId', 'name', 'type', 'modelNumber', 'description', 'location', 'coordinates'],
+    skipHeader: false
+  })
+  
+  // 设置列宽
+  const colWidths = [
+    { wch: 15 }, // projectId
+    { wch: 20 }, // name
+    { wch: 15 }, // type
+    { wch: 20 }, // modelNumber
+    { wch: 30 }, // description
+    { wch: 20 }, // location
+    { wch: 50 }  // coordinates
+  ]
+  worksheet['!cols'] = colWidths
+  
+  // 添加工作表到工作簿
+  XLSX.utils.book_append_sheet(workbook, worksheet, '预埋件示例数据')
+  
+  // 导出文件
+  XLSX.writeFile(workbook, '预埋件批量导入示例.xlsx')
 }
 
 // 生成二维码

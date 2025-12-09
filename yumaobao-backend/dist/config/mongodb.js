@@ -27,10 +27,9 @@ async function connectToMongoDB() {
         return db;
     }
     catch (error) {
-        console.warn('MongoDB连接失败:', error);
-        console.warn('系统将在没有MongoDB的情况下继续运行');
-        // 不抛出错误，让服务器继续启动
-        return null;
+        console.error('MongoDB连接失败:', error);
+        // 数据库连接是系统核心功能，连接失败时应抛出错误
+        throw new Error('无法连接到MongoDB数据库，请检查配置和数据库服务状态');
     }
 }
 // 获取数据库实例

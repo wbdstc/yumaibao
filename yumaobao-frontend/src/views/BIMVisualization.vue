@@ -114,17 +114,42 @@
 
     <!-- 模型显示区域 -->
     <div class="model-container">
-      <!-- CAD查看器 -->
-      <div class="cad-viewer-wrapper" v-if="selectedModel">
+      <!-- 模型视图切换 -->
+      <div class="view-switcher">
+        <el-radio-group v-model="currentView" size="small">
+          <el-radio-button label="2d">2D CAD视图</el-radio-button>
+          <el-radio-button label="3d">3D BIM视图</el-radio-button>
+          <el-radio-button label="both">双视图</el-radio-button>
+        </el-radio-group>
+        <el-checkbox v-model="enableCoordinateSync" size="small" class="sync-checkbox">
+          <el-icon><RefreshRight /></el-icon>坐标同步
+        </el-checkbox>
+      </div>
+
+      <!-- CAD查看器（2D视图） -->
+      <div class="cad-viewer-wrapper" v-if="selectedModel && (currentView === '2d' || currentView === 'both')">
+        <div class="view-title">2D CAD视图</div>
         <MlCadViewer
           ref="cadViewerRef"
           locale="zh"
           :local-file="modelFile"
-          :base-url="'http://localhost:3000/uploads/'"
           :useMainThreadDraw="false"
           @loaded="onViewerLoaded"
           @click="onViewerClick"
+          @mouse-move="onViewerMouseMove"
         />
+      </div>
+
+      <!-- 3D BIM模型视图（占位符，实际项目中应集成Three.js等3D库） -->
+      <div class="bim-viewer-wrapper" v-if="selectedModel && (currentView === '3d' || currentView === 'both')">
+        <div class="view-title">3D BIM视图</div>
+        <div class="bim-viewer-container" ref="bimViewerRef">
+          <!-- 这里可以集成Three.js或其他3D库来显示BIM模型 -->
+          <div class="bim-placeholder" v-if="!isBimModelLoaded">
+            <el-icon size="64"><Document /></el-icon>
+            <p>加载3D模型中...</p>
+          </div>
+        </div>
       </div>
 
       <!-- 未选择模型时的提示 -->
@@ -271,13 +296,14 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection } from '@element-plus/icons-vue'
+import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
 
 // 组件引用
 const cadViewerRef = ref(null)
+const bimViewerRef = ref(null)
 
 // 状态管理
 const selectedProjectId = ref('')
@@ -286,6 +312,9 @@ const selectedModelId = ref('')
 const selectedStatuses = ref(['pending', 'installed', 'inspected', 'completed'])
 const showGrid = ref(true)
 const embeddedPartSearch = ref('')
+const currentView = ref('2d') // 2d, 3d, both
+const enableCoordinateSync = ref(true) // 启用2D/3D坐标同步
+const isBimModelLoaded = ref(false)
 
 // 数据
 const projects = ref([])
@@ -426,8 +455,8 @@ const getModelFile = async (modelId) => {
       selectedModel.value = model
       selectedEmbeddedPart.value = null
       
-      // 从服务器加载模型文件
-      const response = await api.bimModel.downloadBIMModel(modelId)
+      // 从服务器加载模型文件 - 优先使用轻量化版本
+      const response = await api.bimModel.downloadBIMModel(modelId, model.isLightweight)
       
       // 创建临时URL用于CAD-Viewer
       const blob = new Blob([response], { type: 'application/octet-stream' })
@@ -531,23 +560,51 @@ const onViewerLoaded = () => {
       embeddedParts: embeddedParts.value.length
     }
   }, 500)
+  
+  // 如果启用了坐标同步，初始化BIM模型
+  if (enableCoordinateSync && currentView !== '2d') {
+    loadBimModel()
+  }
 }
 
 const onViewerClick = (event) => {
   console.log('Viewer clicked:', event)
-  // 处理点击事件，例如高亮选中的预埋件
   
-  // 模拟点击模型中的预埋件
-  const clickedEmbeddedPart = embeddedParts.value.find(ep => Math.random() > 0.7)
-  if (clickedEmbeddedPart) {
-    selectedEmbeddedPart.value = clickedEmbeddedPart
-    highlightEmbeddedPart(clickedEmbeddedPart)
+  // 处理点击事件，高亮选中的预埋件
+  if (cadViewerRef.value) {
+    // 获取点击位置的实体信息
+    const entityInfo = cadViewerRef.value.getEntityAt(event.clientX, event.clientY)
+    if (entityInfo) {
+      // 查找对应的预埋件
+      const clickedEmbeddedPart = embeddedParts.value.find(ep => ep.code === entityInfo.entityId || ep.name === entityInfo.name)
+      if (clickedEmbeddedPart) {
+        selectedEmbeddedPart.value = clickedEmbeddedPart
+        highlightEmbeddedPart(clickedEmbeddedPart)
+        
+        // 如果启用了坐标同步，在3D视图中高亮对应位置
+        if (enableCoordinateSync && bimViewerRef.value) {
+          highlightInBimViewer(clickedEmbeddedPart)
+        }
+      }
+    }
   }
 }
 
 const highlightEmbeddedPart = (embeddedPart) => {
   console.log('Highlight embedded part:', embeddedPart)
   ElMessage.info(`已定位到预埋件: ${embeddedPart.name}`)
+  
+  // 在2D CAD视图中高亮
+  if (cadViewerRef.value) {
+    // 调用CAD查看器的高亮方法
+    cadViewerRef.value.highlightEntity(embeddedPart.code)
+    cadViewerRef.value.zoomToEntity(embeddedPart.code)
+  }
+  
+  // 如果启用了坐标同步，在3D视图中高亮
+  if (enableCoordinateSync && bimViewerRef.value) {
+    highlightInBimViewer(embeddedPart)
+  }
 }
 
 const showPreviousFloor = () => {
@@ -611,6 +668,52 @@ const refreshViewer = () => {
     // 调用CAD查看器的refresh方法
     cadViewerRef.value.refresh()
   }
+}
+
+// 新添加的方法
+// 鼠标移动事件处理（用于坐标同步）
+const onViewerMouseMove = (event) => {
+  if (!enableCoordinateSync || !bimViewerRef.value) return
+  
+  // 获取鼠标位置的坐标信息
+  if (cadViewerRef.value) {
+    const coordinate = cadViewerRef.value.getCoordinateAt(event.clientX, event.clientY)
+    if (coordinate) {
+      // 在3D视图中同步显示坐标
+      console.log('同步坐标:', coordinate)
+      // 实际项目中，这里应该更新3D视图的相机位置
+    }
+  }
+}
+
+// 加载3D BIM模型
+const loadBimModel = () => {
+  if (!selectedModel.value || !bimViewerRef.value) return
+  
+  console.log('加载3D BIM模型:', selectedModel.value.name)
+  isBimModelLoaded.value = false
+  
+  // 模拟3D模型加载过程
+  setTimeout(() => {
+    console.log('3D BIM模型加载完成')
+    isBimModelLoaded.value = true
+    
+    // 实际项目中，这里应该使用Three.js或其他3D库加载BIM模型
+    // 例如：
+    // const scene = new THREE.Scene()
+    // const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000)
+    // const renderer = new THREE.WebGLRenderer()
+    // // ... 加载模型并渲染 ...
+  }, 2000)
+}
+
+// 在3D BIM视图中高亮预埋件
+const highlightInBimViewer = (embeddedPart) => {
+  if (!bimViewerRef.value) return
+  
+  console.log('在3D视图中高亮:', embeddedPart.name)
+  // 实际项目中，这里应该使用3D库的API来高亮指定的预埋件
+  // 例如，在Three.js中可以通过修改材质颜色或添加发光效果来实现高亮
 }
 
 const uploadNewModel = () => {
@@ -688,11 +791,76 @@ const uploadNewModel = () => {
   background-color: #f5f7fa;
   position: relative;
   height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+}
+
+.view-switcher {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: #fff;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.sync-checkbox {
+  margin-left: 15px;
+}
+
+.view-title {
+  padding: 8px 12px;
+  background-color: #ecf5ff;
+  color: #409eff;
+  font-weight: bold;
+  font-size: 14px;
 }
 
 .cad-viewer-wrapper {
   width: 100%;
+  flex: 1;
+  border: 1px solid #ebeef5;
+  margin: 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bim-viewer-wrapper {
+  width: 100%;
+  flex: 1;
+  border: 1px solid #ebeef5;
+  margin: 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  background-color: #000;
+}
+
+.bim-viewer-container {
+  width: 100%;
   height: 100%;
+  position: relative;
+}
+
+.bim-placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #606266;
+}
+
+/* 双视图布局 */
+.model-container:has(.current-view-both) .cad-viewer-wrapper,
+.model-container:has(.current-view-both) .bim-viewer-wrapper {
+  width: calc(50% - 10px);
+  height: calc(100% - 20px);
+}
+
+.model-container:has(.current-view-both) {
+  flex-direction: row;
 }
 
 .model-placeholder {

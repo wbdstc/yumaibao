@@ -39,6 +39,11 @@ class UserModel {
         const user = await this.getCollection().findOne({ email });
         return user;
     }
+    // 根据手机号查找用户
+    async findByPhone(phone) {
+        const user = await this.getCollection().findOne({ phone });
+        return user;
+    }
     // 查找所有用户
     async findAll() {
         const users = await this.getCollection().find({}).toArray();

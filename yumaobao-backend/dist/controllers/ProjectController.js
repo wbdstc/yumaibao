@@ -41,13 +41,14 @@ class ProjectController {
     }
     static async createProject(req, res) {
         try {
-            const { name, description, location, startDate, endDate, status } = req.body;
-            const userId = req.user?.userId;
+            const { name, code, description, location, startDate, endDate, status } = req.body;
+            const userId = req.user?.id;
             if (!userId) {
                 return res.status(401).json({ message: '未授权' });
             }
             const project = await Project_1.default.create({
                 name,
+                code,
                 description,
                 location,
                 startDate: startDate ? new Date(startDate) : undefined,
@@ -65,13 +66,14 @@ class ProjectController {
     static async updateProject(req, res) {
         try {
             const { id } = req.params;
-            const { name, description, location, startDate, endDate, status } = req.body;
+            const { name, code, description, location, startDate, endDate, status } = req.body;
             const project = await Project_1.default.findById(id);
             if (!project) {
                 return res.status(404).json({ message: '项目不存在' });
             }
             const updateData = {
                 name,
+                code,
                 description,
                 location,
                 startDate: startDate ? new Date(startDate) : undefined,

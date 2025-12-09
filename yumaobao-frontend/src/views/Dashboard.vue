@@ -298,14 +298,14 @@
           </el-select>
         </el-form-item>
         <el-form-item label="报告格式">
-          <el-checkbox-group v-model="reportForm.formats">
+          <el-checkbox-group v-model="reportForm.reportFormats">
             <el-checkbox label="pdf" border>PDF</el-checkbox>
             <el-checkbox label="excel" border>Excel</el-checkbox>
             <el-checkbox label="word" border>Word</el-checkbox>
           </el-checkbox-group>
         </el-form-item>
         <el-form-item label="报告内容">
-          <el-checkbox-group v-model="reportForm.contents">
+          <el-checkbox-group v-model="reportForm.reportContents">
             <el-checkbox label="统计图表" border>统计图表</el-checkbox>
             <el-checkbox label="详细数据" border>详细数据</el-checkbox>
             <el-checkbox label="分析总结" border>分析总结</el-checkbox>
@@ -398,11 +398,13 @@ export default {
     
     // 报告对话框
     const reportDialogVisible = ref(false)
+    const reportLoading = ref(false)
     const reportForm = reactive({
-      type: 'project_progress',
-      projectId: '',
-      formats: ['pdf', 'excel'],
-      contents: ['统计图表', '详细数据']
+      reportType: 'project-progress',
+      selectedProject: '',
+      selectedStatus: '',
+      reportFormats: ['pdf', 'excel'],
+      reportContents: ['统计图表', '详细数据']
     })
     
     // 快捷日期范围
@@ -736,15 +738,102 @@ export default {
     }
     
     // 提交报告生成
-    const submitReport = () => {
-      // 这里应该调用API生成报告
-      console.log('生成报告:', reportForm)
-      reportDialogVisible.value = false
+    const submitReport = async () => {
+      try {
+        reportLoading.value = true
+        
+        let reportData = null
+        
+        // 根据报告类型调用相应的API
+        if (reportForm.reportType === 'project-progress') {
+          // 生成项目进度报告
+          reportData = await api.report.generateProjectReport(
+            reportForm.selectedProject, 
+            {
+              startDate: dateRange.value[0],
+              endDate: dateRange.value[1]
+            }
+          )
+        } else if (reportForm.reportType === 'embedded-parts-status') {
+          // 生成预埋件状态报告
+          reportData = await api.report.generateEmbeddedPartReport({
+            projectId: reportForm.selectedProject,
+            startDate: dateRange.value[0],
+            endDate: dateRange.value[1],
+            status: reportForm.selectedStatus
+          })
+        }
+        
+        if (reportData && reportData.success) {
+          // 生成报告文件
+          for (const format of reportForm.reportFormats) {
+            const fileResponse = await api.report.generateReportFile(reportData.data, format)
+            
+            // 下载报告文件
+            const blob = new Blob([fileResponse], { type: getBlobType(format) })
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `Report_${new Date().getTime()}.${getExtension(format)}`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            window.URL.revokeObjectURL(url)
+          }
+          
+          ElMessage.success('报告生成成功')
+        } else {
+          ElMessage.error('报告生成失败：' + (reportData?.message || '未知错误'))
+        }
+        
+        reportDialogVisible.value = false
+      } catch (error) {
+        console.error('生成报告失败:', error)
+        ElMessage.error('生成报告失败，请稍后重试')
+      } finally {
+        reportLoading.value = false
+      }
     }
     
     // 生成项目报告
-    const generateProjectReport = (project) => {
-      console.log('生成项目报告:', project)
+    const generateProjectReport = async (project) => {
+      try {
+        reportLoading.value = true
+        
+        // 生成项目进度报告
+        const reportData = await api.report.generateProjectReport(
+          project.id, 
+          {
+            startDate: dateRange.value[0],
+            endDate: dateRange.value[1]
+          }
+        )
+        
+        if (reportData && reportData.success) {
+          // 默认生成PDF格式报告
+          const fileResponse = await api.report.generateReportFile(reportData.data, 'pdf')
+          
+          // 下载报告文件
+          const blob = new Blob([fileResponse], { type: 'application/pdf' })
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `Project_Report_${project.name}_${new Date().getTime()}.pdf`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+          
+          ElMessage.success('项目报告生成成功')
+        } else {
+          ElMessage.error('项目报告生成失败：' + (reportData?.message || '未知错误'))
+        }
+      } catch (error) {
+        console.error('生成项目报告失败:', error)
+        ElMessage.error('生成项目报告失败，请稍后重试')
+      } finally {
+        reportLoading.value = false
+      }
     }
     
     // 查看项目详情
@@ -781,9 +870,30 @@ export default {
       loadDashboardData()
     })
 
+    // 辅助函数：获取文件扩展名
+    const getExtension = (format) => {
+      switch (format) {
+        case 'pdf': return 'pdf'
+        case 'excel': return 'xlsx'
+        case 'word': return 'docx'
+        default: return 'pdf'
+      }
+    }
+    
+    // 辅助函数：获取Blob类型
+    const getBlobType = (format) => {
+      switch (format) {
+        case 'pdf': return 'application/pdf'
+        case 'excel': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        case 'word': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        default: return 'application/pdf'
+      }
+    }
+    
     return {
       userStore,
       loading,
+      reportLoading,
       dateRange,
       statusChartType,
       trendChartType,
@@ -976,6 +1086,7 @@ export default {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 

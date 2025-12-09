@@ -10,9 +10,12 @@ import projectRoutes from './routes/projectRoutes';
 import modelRoutes from './routes/modelRoutes';
 import embeddedPartRoutes from './routes/embeddedPartRoutes';
 import mobileRoutes from './routes/mobileRoutes';
+import reportRoutes from './routes/reportRoutes';
 
 // 数据库导入
 import { connectToMongoDB } from './config/mongodb';
+// MinIO配置
+import { ensureBucketsExist } from './config/minio';
 
 // 加载环境变量
 dotenv.config();
@@ -41,6 +44,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/models', modelRoutes);
 app.use('/api/embedded-parts', embeddedPartRoutes);
 app.use('/api/mobile', mobileRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 静态文件服务
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -51,6 +55,10 @@ async function startServer() {
     // 连接MongoDB
     await connectToMongoDB();
     console.log('MongoDB数据库连接成功');
+    
+    // 初始化MinIO存储桶
+    await ensureBucketsExist();
+    console.log('MinIO存储桶初始化成功');
     
     // 启动服务器
     const PORT = process.env.PORT || 3000;

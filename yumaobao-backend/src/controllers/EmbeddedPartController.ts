@@ -3,9 +3,10 @@ import EmbeddedPart, { EmbeddedPartCreationAttributes } from '../models/Embedded
 import { v4 as uuidv4 } from 'uuid';
 import qrcode from 'qrcode';
 import xlsx from 'xlsx';
-import fs from 'fs';
+
 import path from 'path';
 import { getDB } from '../config/mongodb';
+import { uploadFileToMinIO, deleteFileFromMinIO, downloadFileFromMinIO } from '../utils/fileUploadService';
 
 class EmbeddedPartController {
   // 获取所有预埋件
@@ -71,16 +72,26 @@ class EmbeddedPartController {
       // 生成二维码数据
       const qrCodeData = `${projectId}-${uuidv4()}`;
       
-      // 确保uploads目录存在
-      const qrCodeDir = path.join(__dirname, '../../uploads/qrcodes');
-      if (!fs.existsSync(qrCodeDir)) {
-        fs.mkdirSync(qrCodeDir, { recursive: true });
-      }
-
-      // 生成二维码图片
+      // 生成二维码图片到内存
+      const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
       const qrCodeFileName = `${qrCodeData}.png`;
-      const qrCodePath = path.join(qrCodeDir, qrCodeFileName);
-      await qrcode.toFile(qrCodePath, qrCodeData);
+      
+      // 上传到MinIO
+      const { url: qrCodeUrl } = await uploadFileToMinIO(
+        'qrcodes',
+        { 
+          buffer: qrCodeBuffer, 
+          originalname: qrCodeFileName, 
+          mimetype: 'image/png',
+          size: qrCodeBuffer.length,
+          fieldname: 'qrcode',
+          encoding: '7bit',
+          stream: null as any,
+          destination: '',
+          filename: qrCodeFileName,
+          path: ''
+        }
+      );
 
       const embeddedPart = await EmbeddedPart.create({
         id: uuidv4(),
@@ -92,7 +103,7 @@ class EmbeddedPartController {
         location,
         coordinates,
         qrCodeData,
-        qrCodeUrl: `/uploads/qrcodes/${qrCodeFileName}`,
+        qrCodeUrl,
         status: 'pending'
       });
 
@@ -115,16 +126,26 @@ class EmbeddedPartController {
         // 生成二维码数据
         const qrCodeData = `${projectId}-${uuidv4()}`;
         
-        // 确保uploads目录存在
-        const qrCodeDir = path.join(__dirname, '../../uploads/qrcodes');
-        if (!fs.existsSync(qrCodeDir)) {
-          fs.mkdirSync(qrCodeDir, { recursive: true });
-        }
-
-        // 生成二维码图片
+        // 生成二维码图片到内存
+        const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
         const qrCodeFileName = `${qrCodeData}.png`;
-        const qrCodePath = path.join(qrCodeDir, qrCodeFileName);
-        await qrcode.toFile(qrCodePath, qrCodeData);
+        
+        // 上传到MinIO
+        const { url: qrCodeUrl } = await uploadFileToMinIO(
+          'qrcodes',
+          { 
+            buffer: qrCodeBuffer, 
+            originalname: qrCodeFileName, 
+            mimetype: 'image/png',
+            size: qrCodeBuffer.length,
+            fieldname: 'qrcode',
+            encoding: '7bit',
+            stream: null as any,
+            destination: '',
+            filename: qrCodeFileName,
+            path: ''
+          }
+        );
 
         const embeddedPart = await EmbeddedPart.create({
           projectId,
@@ -135,7 +156,7 @@ class EmbeddedPartController {
           location,
           coordinates,
           qrCodeData,
-          qrCodeUrl: `/uploads/qrcodes/${qrCodeFileName}`
+          qrCodeUrl
         });
 
         createdParts.push(embeddedPart);
@@ -202,16 +223,26 @@ class EmbeddedPartController {
           // 生成二维码数据
           const qrCodeData = `${projectId}-${uuidv4()}`;
           
-          // 确保uploads目录存在
-          const qrCodeDir = path.join(__dirname, '../../uploads/qrcodes');
-          if (!fs.existsSync(qrCodeDir)) {
-            fs.mkdirSync(qrCodeDir, { recursive: true });
-          }
-
-          // 生成二维码图片
+          // 生成二维码图片到内存
+          const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
           const qrCodeFileName = `${qrCodeData}.png`;
-          const qrCodePath = path.join(qrCodeDir, qrCodeFileName);
-          await qrcode.toFile(qrCodePath, qrCodeData);
+          
+          // 上传到MinIO
+          const { url: qrCodeUrl } = await uploadFileToMinIO(
+            'qrcodes',
+            { 
+              buffer: qrCodeBuffer, 
+              originalname: qrCodeFileName, 
+              mimetype: 'image/png',
+              size: qrCodeBuffer.length,
+              fieldname: 'qrcode',
+              encoding: '7bit',
+              stream: null as any,
+              destination: '',
+              filename: qrCodeFileName,
+              path: ''
+            }
+          );
 
           const embeddedPart = await EmbeddedPart.create({
             projectId,
@@ -222,7 +253,7 @@ class EmbeddedPartController {
             location: row.location,
             coordinates,
             qrCodeData,
-            qrCodeUrl: `/uploads/qrcodes/${qrCodeFileName}`
+            qrCodeUrl
           });
 
           importedParts.push(embeddedPart);
@@ -311,10 +342,24 @@ class EmbeddedPartController {
         return res.status(404).json({ message: '预埋件不存在' });
       }
 
-      // 删除二维码图片
-      const qrCodePath = path.join(__dirname, '../../uploads/qrcodes', path.basename(embeddedPart.qrCodeUrl));
-      if (fs.existsSync(qrCodePath)) {
-        fs.unlinkSync(qrCodePath);
+      // 从MinIO删除二维码图片 - 这里我们假设qrCodeUrl包含了足够的信息来构建objectName
+      // 注意：实际实现可能需要从数据库中查询文件记录以获取完整的objectName
+      // 由于我们的架构设计中，文件记录应该存储在modelFiles集合中，所以需要查询该集合
+      const db = getDB();
+      if (db) {
+        // 查询二维码文件记录
+        const fileRecord = await (db as any).collection('modelFiles').findOne({
+          $or: [
+            { originalFilename: path.basename(embeddedPart.qrCodeUrl) },
+            { url: embeddedPart.qrCodeUrl }
+          ]
+        });
+        if (fileRecord) {
+          // 从MinIO删除文件
+          await deleteFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+          // 删除文件记录
+          await (db as any).collection('modelFiles').deleteOne({ _id: fileRecord._id });
+        }
       }
 
       await EmbeddedPart.delete(id);
@@ -352,25 +397,44 @@ class EmbeddedPartController {
     }
   }
 
-  // 生成二维码
+  // 获取二维码
   static async generateQRCode(req: Request, res: Response) {
     try {
       const { id } = req.params;
       const embeddedPart = await EmbeddedPart.findById(id);
 
-      if (!embeddedPart) {
-        return res.status(404).json({ message: '预埋件不存在' });
+      if (!embeddedPart || !embeddedPart.qrCodeUrl) {
+        return res.status(404).json({ message: '预埋件或二维码不存在' });
       }
 
-      const qrCodePath = path.join(__dirname, '../../uploads/qrcodes', path.basename(embeddedPart.qrCodeUrl));
-      if (!fs.existsSync(qrCodePath)) {
-        return res.status(404).json({ message: '二维码图片不存在' });
+      // 从MinIO获取二维码图片
+      const db = getDB();
+      if (!db) {
+        return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      return res.sendFile(qrCodePath);
+      // 查询二维码文件记录
+      const fileRecord = await (db as any).collection('modelFiles').findOne({
+        $or: [
+          { originalFilename: path.basename(embeddedPart.qrCodeUrl) },
+          { url: embeddedPart.qrCodeUrl }
+        ]
+      });
+
+      if (!fileRecord) {
+        return res.status(404).json({ message: '二维码文件记录不存在' });
+      }
+
+      // 从MinIO下载文件
+      const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+
+      // 设置响应头并返回文件
+      res.setHeader('Content-Type', 'image/png'); // 假设二维码是PNG格式
+      res.setHeader('Content-Length', fileBuffer.length);
+      return res.send(fileBuffer);
     } catch (error) {
-      console.error('生成二维码失败:', error);
-      return res.status(500).json({ message: '生成二维码失败', error: String(error) });
+      console.error('获取二维码失败:', error);
+      return res.status(500).json({ message: '获取二维码失败', error: String(error) });
     }
   }
 

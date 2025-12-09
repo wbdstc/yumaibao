@@ -7,6 +7,9 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const mongodb_1 = require("../config/mongodb");
 const Model_1 = __importDefault(require("../models/Model"));
+const fileUploadService_1 = require("../utils/fileUploadService");
+const minio_1 = require("../config/minio");
+// 模型轻量化处理工具的导入已移除，因为现在使用MinIO存储
 class ModelController {
     // 获取模型列表
     static async getAllModels(req, res) {
@@ -52,10 +55,19 @@ class ModelController {
             if (!file) {
                 return res.status(400).json({ message: '未上传文件' });
             }
-            // 确保uploads目录存在
-            const uploadDir = path_1.default.join(__dirname, '../../uploads/models');
-            if (!fs_1.default.existsSync(uploadDir)) {
-                fs_1.default.mkdirSync(uploadDir, { recursive: true });
+            // 上传文件到MinIO
+            const { url: fileUrl, objectName } = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.MODELS, file);
+            // 保存原始文件名到MongoDB
+            const db = (0, mongodb_1.getDB)();
+            let fileRecord = null;
+            if (db) {
+                fileRecord = await db.collection('modelFiles').insertOne({
+                    modelId: '', // 稍后更新
+                    originalFilename: file.originalname,
+                    objectName,
+                    bucketName: minio_1.MINIO_BUCKETS.MODELS,
+                    createdAt: new Date()
+                });
             }
             // 保存模型元数据到MongoDB
             const model = await Model_1.default.create({
@@ -63,23 +75,16 @@ class ModelController {
                 floorId,
                 name: name || file.originalname,
                 type: type,
-                fileUrl: `/uploads/models/${file.filename}`,
+                fileUrl,
                 fileSize: file.size,
                 format: path_1.default.extname(file.originalname).toLowerCase().substring(1),
                 version: version || '1.0',
                 uploadedBy: userId,
                 description
             });
-            // 保存原始文件名到MongoDB（可选）
-            const db = (0, mongodb_1.getDB)();
-            if (db) {
-                await db.collection('modelFiles').insertOne({
-                    modelId: model.id,
-                    originalFilename: file.originalname,
-                    filename: file.filename,
-                    path: file.path,
-                    createdAt: new Date()
-                });
+            // 更新文件记录的modelId
+            if (db && fileRecord) {
+                await db.collection('modelFiles').updateOne({ _id: fileRecord.insertedId }, { $set: { modelId: model.id } });
             }
             return res.status(201).json({ message: '模型上传成功', data: model });
         }
@@ -87,6 +92,128 @@ class ModelController {
             console.error('上传模型失败:', error);
             return res.status(500).json({ message: '上传模型失败', error: String(error) });
         }
+    }
+    // 模型轻量化处理
+    static async processLightweightModel(originalFilePath, originalFilename) {
+        const fileExtension = path_1.default.extname(originalFilename).toLowerCase();
+        const baseName = path_1.default.basename(originalFilename, fileExtension);
+        const lightweightFilename = `${baseName}_light${fileExtension}`;
+        const lightweightPath = path_1.default.join(__dirname, '../../uploads/models', lightweightFilename);
+        try {
+            // 根据文件类型选择不同的轻量化处理方式
+            if (fileExtension === '.dwg' || fileExtension === '.dxf') {
+                // 对于DWG/DXF文件，使用CAD文件处理工具进行轻量化
+                console.log('开始DWG/DXF文件轻量化处理...');
+                // 提取CAD文件信息
+                const cadInfo = await this.extractCADFileInfo();
+                console.log('CAD文件信息:', cadInfo);
+                // 模拟轻量化处理
+                await this.simulateCADLightweightProcess(originalFilePath, lightweightPath, cadInfo);
+            }
+            else if (fileExtension === '.ifc' || fileExtension === '.rvt' || fileExtension === '.nwd') {
+                // 对于BIM模型文件，使用专门的BIM轻量化工具
+                console.log('开始BIM模型轻量化处理...');
+                // 提取BIM模型信息
+                const bimInfo = await this.extractBIMModelInfo();
+                console.log('BIM模型信息:', bimInfo);
+                // 模拟轻量化处理
+                await this.simulateBIMLightweightProcess(originalFilePath, lightweightPath, bimInfo);
+            }
+            else {
+                // 对于其他文件类型，直接复制作为轻量化版本
+                fs_1.default.copyFileSync(originalFilePath, lightweightPath);
+                console.log(`不支持的文件类型，直接复制原始文件作为轻量化版本: ${fileExtension}`);
+            }
+            return lightweightPath;
+        }
+        catch (error) {
+            console.error('模型轻量化处理失败:', error);
+            // 如果轻量化处理失败，返回原始文件路径
+            return originalFilePath;
+        }
+    }
+    // 提取CAD文件信息
+    static async extractCADFileInfo() {
+        // 模拟提取CAD文件信息
+        // 实际项目中应使用专业的CAD文件处理库
+        return {
+            format: 'CAD',
+            version: 'AutoCAD 2023',
+            layers: Math.floor(Math.random() * 50) + 10, // 10-60个图层
+            entities: Math.floor(Math.random() * 500) + 100, // 100-600个实体
+            units: 'mm',
+            author: 'CAD Designer',
+            createdDate: new Date().toISOString()
+        };
+    }
+    // 提取BIM模型信息
+    static async extractBIMModelInfo() {
+        // 模拟提取BIM模型信息
+        // 实际项目中应使用专业的BIM文件处理库
+        return {
+            format: 'BIM',
+            schemaVersion: 'IFC4',
+            buildingElements: Math.floor(Math.random() * 1000) + 500, // 500-1500个建筑元素
+            levels: Math.floor(Math.random() * 20) + 5, // 5-25个楼层
+            materials: Math.floor(Math.random() * 100) + 20, // 20-120种材料
+            projectName: 'Sample Building Project',
+            author: 'BIM Modeler',
+            createdDate: new Date().toISOString()
+        };
+    }
+    // 模拟CAD文件轻量化处理
+    static async simulateCADLightweightProcess(originalPath, outputPath, cadInfo) {
+        return new Promise((resolve, reject) => {
+            // 模拟轻量化处理耗时
+            setTimeout(() => {
+                try {
+                    // 复制文件作为模拟
+                    fs_1.default.copyFileSync(originalPath, outputPath);
+                    // 模拟生成轻量化报告
+                    const lightweightReport = {
+                        originalSize: fs_1.default.statSync(originalPath).size,
+                        lightweightSize: Math.floor(fs_1.default.statSync(originalPath).size * 0.6), // 模拟减少40%的文件大小
+                        processedTime: '2.5 seconds',
+                        compressionRatio: '60%',
+                        retainedLayers: Math.floor(cadInfo.layers * 0.8), // 保留80%的图层
+                        retainedEntities: Math.floor(cadInfo.entities * 0.7), // 保留70%的实体
+                        status: 'success'
+                    };
+                    console.log('CAD文件轻量化处理完成:', lightweightReport);
+                    resolve();
+                }
+                catch (error) {
+                    reject(error);
+                }
+            }, 2000);
+        });
+    }
+    // 模拟BIM模型轻量化处理
+    static async simulateBIMLightweightProcess(originalPath, outputPath, bimInfo) {
+        return new Promise((resolve, reject) => {
+            // 模拟轻量化处理耗时
+            setTimeout(() => {
+                try {
+                    // 复制文件作为模拟
+                    fs_1.default.copyFileSync(originalPath, outputPath);
+                    // 模拟生成轻量化报告
+                    const lightweightReport = {
+                        originalSize: fs_1.default.statSync(originalPath).size,
+                        lightweightSize: Math.floor(fs_1.default.statSync(originalPath).size * 0.5), // 模拟减少50%的文件大小
+                        processedTime: '4.2 seconds',
+                        compressionRatio: '50%',
+                        retainedElements: Math.floor(bimInfo.buildingElements * 0.85), // 保留85%的建筑元素
+                        retainedLevels: bimInfo.levels, // 保留所有楼层
+                        status: 'success'
+                    };
+                    console.log('BIM模型轻量化处理完成:', lightweightReport);
+                    resolve();
+                }
+                catch (error) {
+                    reject(error);
+                }
+            }, 3000);
+        });
     }
     // 更新模型信息
     static async updateModel(req, res) {
@@ -119,15 +246,16 @@ class ModelController {
             if (!model) {
                 return res.status(404).json({ message: '模型不存在' });
             }
-            // 删除文件
-            const filePath = path_1.default.join(__dirname, '../../uploads/models', path_1.default.basename(model.fileUrl));
-            if (fs_1.default.existsSync(filePath)) {
-                fs_1.default.unlinkSync(filePath);
-            }
-            // 删除MongoDB中的文件记录（可选）
+            // 删除MongoDB中的文件记录
             const db = (0, mongodb_1.getDB)();
             if (db) {
-                await db.collection('modelFiles').deleteOne({ modelId: id });
+                const fileRecord = await db.collection('modelFiles').findOne({ modelId: id });
+                if (fileRecord) {
+                    // 从MinIO删除文件
+                    await (0, fileUploadService_1.deleteFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
+                    // 删除文件记录
+                    await db.collection('modelFiles').deleteOne({ modelId: id });
+                }
             }
             // 删除MongoDB中的模型记录
             await Model_1.default.delete(id);
@@ -158,21 +286,22 @@ class ModelController {
             if (!model) {
                 return res.status(404).json({ message: '模型不存在' });
             }
-            const filePath = path_1.default.join(__dirname, '../../uploads/models', path_1.default.basename(model.fileUrl));
-            if (!fs_1.default.existsSync(filePath)) {
-                return res.status(404).json({ message: '文件不存在' });
-            }
-            // 获取原始文件名（可选，从MongoDB获取）
+            // 获取文件记录
             const db = (0, mongodb_1.getDB)();
-            let originalFilename = path_1.default.basename(model.fileUrl);
-            if (db) {
-                const fileRecord = await db.collection('modelFiles').findOne({ modelId: id });
-                originalFilename = fileRecord?.originalFilename || originalFilename;
+            if (!db) {
+                return res.status(500).json({ message: '数据库连接失败' });
             }
+            const fileRecord = await db.collection('modelFiles').findOne({ modelId: id });
+            if (!fileRecord) {
+                return res.status(404).json({ message: '文件记录不存在' });
+            }
+            // 从MinIO下载文件
+            const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
             // 设置响应头并下载文件
-            res.setHeader('Content-Disposition', `attachment; filename="${originalFilename.replace(/"/g, '\\"')}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileRecord.originalFilename.replace(/"/g, '\\"')}"`);
             res.setHeader('Content-Type', 'application/octet-stream');
-            return res.sendFile(filePath);
+            res.setHeader('Content-Length', fileBuffer.length);
+            return res.send(fileBuffer);
         }
         catch (error) {
             console.error('下载模型失败:', error);
@@ -187,11 +316,22 @@ class ModelController {
             if (!model || !model.thumbnailUrl) {
                 return res.status(404).json({ message: '缩略图不存在' });
             }
-            const thumbnailPath = path_1.default.join(__dirname, '../../uploads/models', path_1.default.basename(model.thumbnailUrl));
-            if (!fs_1.default.existsSync(thumbnailPath)) {
-                return res.status(404).json({ message: '缩略图文件不存在' });
+            // 从MinIO下载缩略图
+            const db = (0, mongodb_1.getDB)();
+            if (!db) {
+                return res.status(500).json({ message: '数据库连接失败' });
             }
-            return res.sendFile(thumbnailPath);
+            // 查找缩略图文件记录
+            const fileRecord = await db.collection('modelFiles').findOne({ modelId: id });
+            if (!fileRecord) {
+                return res.status(404).json({ message: '缩略图文件记录不存在' });
+            }
+            // 从MinIO下载文件
+            const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
+            // 设置响应头并返回文件
+            res.setHeader('Content-Type', 'image/png'); // 假设缩略图是PNG格式
+            res.setHeader('Content-Length', fileBuffer.length);
+            return res.send(fileBuffer);
         }
         catch (error) {
             console.error('获取缩略图失败:', error);

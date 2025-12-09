@@ -10,14 +10,17 @@ export interface ModelAttributes {
   name: string;
   type: 'bim' | 'cad' | '2d' | '3d';
   fileUrl: string;
+  lightweightUrl?: string;
   thumbnailUrl?: string;
   fileSize: number;
+  lightweightSize?: number;
   format: string;
   version: string;
   uploadedBy: string;
   uploadedAt: Date;
   updatedAt?: Date;
   description?: string;
+  isLightweight?: boolean;
   metadata?: Record<string, any>;
 }
 
@@ -28,12 +31,15 @@ export interface ModelCreationAttributes {
   name: string;
   type: 'bim' | 'cad' | '2d' | '3d';
   fileUrl: string;
+  lightweightUrl?: string;
   thumbnailUrl?: string;
   fileSize: number;
+  lightweightSize?: number;
   format: string;
   version?: string;
   uploadedBy: string;
   description?: string;
+  isLightweight?: boolean;
   metadata?: Record<string, any>;
 }
 

@@ -40,18 +40,8 @@ const express_1 = require("express");
 const ModelController_1 = __importDefault(require("../controllers/ModelController"));
 const auth_1 = __importStar(require("../middleware/auth"));
 const multer_1 = __importDefault(require("multer"));
-const path_1 = __importDefault(require("path"));
-// 配置文件上传存储
-const storage = multer_1.default.diskStorage({
-    destination: (_req, _file, cb) => {
-        const uploadPath = path_1.default.join(__dirname, '../../uploads/models');
-        cb(null, uploadPath);
-    },
-    filename: (_req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path_1.default.extname(file.originalname));
-    }
-});
+// 配置文件上传存储 - 使用内存存储以便直接上传到MinIO
+const storage = multer_1.default.memoryStorage();
 const upload = (0, multer_1.default)({ storage });
 const router = (0, express_1.Router)();
 // 模型管理路由

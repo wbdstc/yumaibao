@@ -164,8 +164,11 @@ export default {
     getBIMModel(id) {
       return api.get(`/models/${id}`)
     },
-    downloadBIMModel(id) {
-      return api.get(`/models/${id}/download`, { responseType: 'blob' })
+    downloadBIMModel(id, useLightweight = true) {
+      return api.get(`/models/${id}/download`, { 
+        responseType: 'blob',
+        params: { useLightweight } 
+      })
     },
     uploadBIMModel(data) {
       return api.post('/models/upload', data, {
@@ -200,6 +203,23 @@ export default {
     },
     getMobileTasks() {
       return api.get('/mobile/tasks')
+    }
+  },
+  // 报告生成相关API
+  report: {
+    // 生成项目进度报告
+    generateProjectReport(projectId, dateRange) {
+      return api.post(`/reports/project-progress/${projectId}`, { dateRange })
+    },
+    // 生成预埋件状态报告
+    generateEmbeddedPartReport(filters) {
+      return api.post('/reports/embedded-parts-status', filters)
+    },
+    // 生成报告文件
+    generateReportFile(reportData, format) {
+      return api.post('/reports/generate-file', { reportData, format }, {
+        responseType: 'blob' // 重要：设置响应类型为blob以接收文件
+      })
     }
   }
 }

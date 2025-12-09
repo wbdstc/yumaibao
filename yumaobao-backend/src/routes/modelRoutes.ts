@@ -2,19 +2,9 @@ import { Router } from 'express';
 import ModelController from '../controllers/ModelController';
 import authenticate, { authorize } from '../middleware/auth';
 import multer from 'multer';
-import path from 'path';
 
-// 配置文件上传存储
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const uploadPath = path.join(__dirname, '../../uploads/models');
-    cb(null, uploadPath);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// 配置文件上传存储 - 使用内存存储以便直接上传到MinIO
+const storage = multer.memoryStorage();
 
 const upload = multer({ storage });
 

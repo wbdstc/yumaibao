@@ -9,11 +9,15 @@ class UserController {
     // 用户注册
     static async register(req, res) {
         try {
-            const { name, email, password, role, phone } = req.body;
-            // 检查邮箱是否已存在
-            const existingUser = await User_1.default.findByEmail(email);
+            const { name, email, phone, password, role } = req.body;
+            // 验证必填字段
+            if (!phone) {
+                return res.status(400).json({ message: '手机号不能为空' });
+            }
+            // 检查手机号是否已存在
+            const existingUser = await User_1.default.findByPhone(phone);
             if (existingUser) {
-                return res.status(400).json({ message: '该邮箱已被注册' });
+                return res.status(400).json({ message: '该手机号已被注册' });
             }
             // 哈希密码
             const hashedPassword = (0, auth_1.hashPassword)(password);
@@ -21,9 +25,9 @@ class UserController {
             const newUser = await User_1.default.create({
                 name,
                 email,
+                phone,
                 password: hashedPassword,
-                role,
-                phone
+                role
             });
             // 生成JWT令牌
             const token = (0, auth_1.generateJWT)(String(newUser.id), newUser.role);
@@ -49,15 +53,21 @@ class UserController {
     // 用户登录
     static async login(req, res) {
         try {
-            const { email, password } = req.body;
-            // 查找用户
-            const user = await User_1.default.findByEmail(email);
+            const { email, phone, password } = req.body;
+            // 查找用户 - 优先使用手机号，其次使用邮箱
+            let user;
+            if (phone) {
+                user = await User_1.default.findByPhone(phone);
+            }
+            else if (email) {
+                user = await User_1.default.findByEmail(email);
+            }
             if (!user) {
-                return res.status(401).json({ message: '邮箱或密码错误' });
+                return res.status(401).json({ message: '用户名或密码错误' });
             }
             // 验证密码
             if (!(0, auth_1.verifyPassword)(password, user.password)) {
-                return res.status(401).json({ message: '邮箱或密码错误' });
+                return res.status(401).json({ message: '用户名或密码错误' });
             }
             // 生成JWT令牌
             const token = (0, auth_1.generateJWT)(String(user.id), user.role);
