@@ -11,11 +11,11 @@
         :rules="loginRules"
         class="login-form"
       >
-        <el-form-item prop="email">
+        <el-form-item prop="phone">
           <el-input
-            v-model="loginForm.email"
-            placeholder="邮箱"
-            prefix-icon="Message"
+            v-model="loginForm.phone"
+            placeholder="手机号"
+            prefix-icon="Mobile"
             clearable
             autocomplete="off"
           />
@@ -88,7 +88,7 @@ export default {
 
     // 登录表单数据
     const loginForm = reactive({
-      email: '',
+      phone: '',
       password: '',
       role: 'installer',
       remember: false
@@ -96,9 +96,9 @@ export default {
 
     // 登录表单验证规则
     const loginRules = {
-      email: [
-        { required: true, message: '请输入邮箱', trigger: 'blur' },
-        { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
+      phone: [
+        { required: true, message: '请输入手机号', trigger: 'blur' },
+        { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }
       ],
       password: [
         { required: true, message: '请输入密码', trigger: 'blur' },
@@ -116,7 +116,10 @@ export default {
           loading.value = true
 
           // 使用真实API请求
-          api.user.login(loginForm)
+          api.user.login({
+            phone: loginForm.phone,
+            password: loginForm.password
+          })
             .then((response) => {
               // 保存用户信息到store
               userStore.login(response.user, response.token)

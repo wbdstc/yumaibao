@@ -25,7 +25,7 @@
     <el-card class="filter-card">
       <el-form :model="searchForm" inline>
         <el-form-item label="项目">
-          <el-select v-model="searchForm.projectId" placeholder="选择项目">
+          <el-select v-model="searchForm.projectId" placeholder="选择项目" @change="getFloors(searchForm.projectId)">
             <el-option
               v-for="project in projects"
               :key="project.id"
@@ -291,9 +291,14 @@ const getProjects = async () => {
 }
 
 // 获取楼层列表
-const getFloors = async () => {
+const getFloors = async (projectId) => {
   try {
-    const response = await api.floor.getFloors()
+    // 如果没有项目ID，清空楼层列表
+    if (!projectId) {
+      floors.value = []
+      return
+    }
+    const response = await api.floor.getFloors(projectId)
     floors.value = response
   } catch (error) {
     console.error('获取楼层列表失败:', error)
@@ -432,7 +437,8 @@ const handleExcelUpload = (file) => {
 // 批量导入
 const handleBatchImport = async (data) => {
   try {
-    await api.embeddedPart.batchCreateEmbeddedParts(data)
+    // 将数据包装成后端需要的格式 { parts: [...] }
+    await api.embeddedPart.batchCreateEmbeddedParts({ parts: data })
     ElMessage.success('批量导入成功')
     searchEmbeddedParts()
   } catch (error) {
@@ -467,7 +473,8 @@ const downloadQRCode = () => {
 // 页面加载时初始化数据
 onMounted(() => {
   getProjects()
-  getFloors()
+  // 暂时不获取楼层，等待用户选择项目后再获取
+  // getFloors()
   searchEmbeddedParts()
 })
 </script>

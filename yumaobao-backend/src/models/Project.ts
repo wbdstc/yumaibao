@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 export interface ProjectAttributes {
   _id?: ObjectId;
   id: string;
+  code: string;
   name: string;
   description?: string;
   location?: string;
@@ -17,6 +18,7 @@ export interface ProjectAttributes {
 }
 
 export interface ProjectCreationAttributes {
+  code: string;
   name: string;
   description?: string;
   location?: string;

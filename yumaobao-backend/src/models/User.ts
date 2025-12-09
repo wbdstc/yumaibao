@@ -6,22 +6,22 @@ export interface UserAttributes {
   _id?: ObjectId;
   id: string;
   name: string;
-  email: string;
+  email?: string;
   password: string;
   role: 'admin' | 'projectManager' | 'projectEngineer' | 'qualityInspector' | 'installer';
   avatar?: string;
-  phone?: string;
+  phone: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface UserCreationAttributes {
   name: string;
-  email: string;
+  email?: string;
   password: string;
   role: 'admin' | 'projectManager' | 'projectEngineer' | 'qualityInspector' | 'installer';
   avatar?: string;
-  phone?: string;
+  phone: string;
 }
 
 class UserModel {
@@ -62,6 +62,12 @@ class UserModel {
   // 根据邮箱查找用户
   async findByEmail(email: string): Promise<UserAttributes | null> {
     const user = await this.getCollection().findOne<UserAttributes>({ email });
+    return user;
+  }
+
+  // 根据手机号查找用户
+  async findByPhone(phone: string): Promise<UserAttributes | null> {
+    const user = await this.getCollection().findOne<UserAttributes>({ phone });
     return user;
   }
 

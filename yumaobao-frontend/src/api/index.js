@@ -83,6 +83,9 @@ export default {
     },
     changePassword(data) {
       return api.put('/users/password', data)
+    },
+    deleteProfile() {
+      return api.delete('/users/profile')
     }
   },
   // 项目相关API
@@ -101,6 +104,15 @@ export default {
     },
     deleteProject(id) {
       return api.delete(`/projects/${id}`)
+    }
+  },
+  // 楼层相关API
+  floor: {
+    getFloors(projectId) {
+      return projectId ? api.get(`/projects/${projectId}/floors`) : Promise.resolve([])
+    },
+    getFloor(projectId, floorId) {
+      return api.get(`/projects/${projectId}/floors/${floorId}`)
     }
   },
   // 预埋件相关API
@@ -125,6 +137,12 @@ export default {
     },
     updateScanStatus(id, status, notes) {
       return api.put(`/embedded-parts/${id}/scan-status`, { status, notes })
+    },
+    batchCreateEmbeddedParts(data) {
+      return api.post('/embedded-parts/batch', data)
+    },
+    generateQRCode(id) {
+      return api.get(`/embedded-parts/${id}/qrcode`)
     }
   },
   // BIM模型相关API

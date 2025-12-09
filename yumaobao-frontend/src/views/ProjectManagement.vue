@@ -3,7 +3,12 @@
     <!-- 页面标题和操作 -->
     <div class="page-header">
       <h2>项目管理</h2>
-      <el-button type="primary" @click="showAddProjectDialog">
+      <el-button 
+        type="primary" 
+        @click="showAddProjectDialog"
+        :disabled="!canCreateProject"
+        :tooltip="canCreateProject ? '' : '只有管理员或项目经理可以创建项目'"
+      >
         <el-icon><Plus /></el-icon>
         新建项目
       </el-button>
@@ -28,9 +33,9 @@
             style="width: 100%"
           >
             <el-option label="全部" value="" />
-            <el-option label="进行中" value="active" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="暂停" value="paused" />
+            <el-option label="规划中" value="planning" />
+        <el-option label="施工中" value="under_construction" />
+        <el-option label="已完成" value="completed" />
           </el-select>
         </el-col>
         <el-col :span="6">
@@ -64,8 +69,8 @@
         <el-table-column prop="description" label="项目描述" min-width="200" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="120">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'active' ? 'success' : scope.row.status === 'completed' ? 'info' : 'warning'">
-              {{ scope.row.status === 'active' ? '进行中' : scope.row.status === 'completed' ? '已完成' : '暂停' }}
+            <el-tag :type="scope.row.status === 'under_construction' ? 'success' : scope.row.status === 'completed' ? 'info' : 'warning'">
+              {{ scope.row.status === 'planning' ? '规划中' : scope.row.status === 'under_construction' ? '施工中' : '已完成' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -240,9 +245,10 @@
 <script>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useProjectStore } from '../stores/index'
+import { useProjectStore, useUserStore } from '../stores/index'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, View, Edit, Delete } from '@element-plus/icons-vue'
+import api from '../api/index'
 
 export default {
   name: 'ProjectManagement',
@@ -256,6 +262,7 @@ export default {
   setup() {
     const router = useRouter()
     const projectStore = useProjectStore()
+    const userStore = useUserStore()
 
     // 项目列表
     const projects = ref([])
@@ -278,7 +285,7 @@ export default {
       name: '',
       code: '',
       description: '',
-      status: 'active',
+      status: 'planning',
       startDate: '',
       endDate: ''
     })
@@ -352,21 +359,31 @@ export default {
       return result
     })
 
+    // 检查用户是否有权限创建项目
+    const canCreateProject = computed(() => {
+      const role = userStore.userRole
+      return role === 'admin' || role === 'projectManager'
+    })
+
     // 显示新建项目对话框
     const showAddProjectDialog = () => {
-      // 重置表单
-      Object.assign(addProjectForm, {
-        name: '',
-        code: '',
-        description: '',
-        status: 'active',
-        startDate: '',
-        endDate: ''
-      })
-      if (addProjectFormRef.value) {
-        addProjectFormRef.value.resetFields()
+      if (canCreateProject.value) {
+        // 重置表单
+        Object.assign(addProjectForm, {
+          name: '',
+          code: '',
+          description: '',
+          status: 'planning',
+          startDate: '',
+          endDate: ''
+        })
+        if (addProjectFormRef.value) {
+          addProjectFormRef.value.resetFields()
+        }
+        addProjectDialogVisible.value = true
+      } else {
+        ElMessage.error('只有管理员或项目经理可以创建项目')
       }
-      addProjectDialogVisible.value = true
     }
 
     // 显示编辑项目对话框
@@ -377,44 +394,48 @@ export default {
     }
 
     // 处理新建项目
-    const handleAddProject = () => {
-      addProjectFormRef.value.validate((valid) => {
-        if (valid) {
-          // 模拟添加项目
-          const newProject = {
-            ...addProjectForm,
-            id: Date.now(),
-            createdBy: '当前用户',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+    const handleAddProject = async () => {
+      addProjectFormRef.value.validate(async (valid) => {
+        if (valid && canCreateProject.value) {
+          try {
+            // 调用API创建项目
+            const response = await api.project.createProject(addProjectForm)
+            // 后端返回的响应包含message和data字段
+            const newProject = response.data
+            projects.value.push(newProject)
+            projectStore.addProject(newProject)
+            addProjectDialogVisible.value = false
+            ElMessage.success(response.message || '项目创建成功')
+          } catch (error) {
+            console.error('创建项目失败:', error)
+            // 从错误响应中获取更详细的消息
+            const errorMessage = error.response?.data?.message || '创建项目失败'
+            ElMessage.error(errorMessage)
           }
-
-          projects.value.push(newProject)
-          projectStore.addProject(newProject)
-          addProjectDialogVisible.value = false
-          ElMessage.success('项目创建成功')
         }
       })
     }
 
     // 处理编辑项目
-    const handleEditProject = () => {
-      editProjectFormRef.value.validate((valid) => {
+    const handleEditProject = async () => {
+      editProjectFormRef.value.validate(async (valid) => {
         if (valid) {
-          // 模拟更新项目
-          const updatedProject = {
-            ...editProjectForm,
-            updatedAt: new Date().toISOString()
+          try {
+            // 调用API更新项目
+            const response = await api.project.updateProject(editProjectForm.id, editProjectForm)
+            // 后端返回的响应包含message和data字段
+            const updatedProject = response.data
+            const index = projects.value.findIndex(p => p.id === editProjectForm.id)
+            if (index !== -1) {
+              projects.value[index] = updatedProject
+              projectStore.updateProject(updatedProject)
+            }
+            editProjectDialogVisible.value = false
+            ElMessage.success(response.message || '项目更新成功')
+          } catch (error) {
+            console.error('更新项目失败:', error)
+            ElMessage.error('更新项目失败')
           }
-
-          const index = projects.value.findIndex(p => p.id === updatedProject.id)
-          if (index !== -1) {
-            projects.value[index] = updatedProject
-            projectStore.updateProject(updatedProject)
-          }
-
-          editProjectDialogVisible.value = false
-          ElMessage.success('项目更新成功')
         }
       })
     }
@@ -429,12 +450,18 @@ export default {
           cancelButtonText: '取消',
           type: 'warning'
         }
-      ).then(() => {
-        // 模拟删除项目
-        const index = projects.value.findIndex(p => p.id === project.id)
-        if (index !== -1) {
-          projects.value.splice(index, 1)
+      ).then(async () => {
+        try {
+          // 调用API删除项目
+          await api.project.deleteProject(project.id)
+          const index = projects.value.findIndex(p => p.id === project.id)
+          if (index !== -1) {
+            projects.value.splice(index, 1)
+          }
           ElMessage.success('项目删除成功')
+        } catch (error) {
+          console.error('删除项目失败:', error)
+          ElMessage.error('删除项目失败')
         }
       }).catch(() => {
         // 取消删除
@@ -469,60 +496,14 @@ export default {
     }
 
     // 加载项目数据
-    const loadProjects = () => {
-      // 模拟数据加载
-      setTimeout(() => {
-        projects.value = [
-          {
-            id: 1,
-            name: '商业综合体项目',
-            code: 'PROJ-2023-001',
-            description: 'CBD地区大型商业综合体，包含购物中心、写字楼和酒店',
-            status: 'active',
-            startDate: '2023-01-15',
-            endDate: '2025-06-30',
-            createdBy: '张经理',
-            createdAt: '2023-01-10T08:30:00Z',
-            updatedAt: '2023-10-15T14:20:00Z'
-          },
-          {
-            id: 2,
-            name: '高层住宅项目',
-            code: 'PROJ-2023-002',
-            description: '城市新区10栋30层高层住宅，配套完善',
-            status: 'active',
-            startDate: '2023-03-01',
-            endDate: '2024-12-31',
-            createdBy: '李工程师',
-            createdAt: '2023-02-20T10:15:00Z',
-            updatedAt: '2023-10-14T09:15:00Z'
-          },
-          {
-            id: 3,
-            name: '地铁站项目',
-            code: 'PROJ-2022-015',
-            description: '城市轨道交通5号线地铁站建设项目',
-            status: 'completed',
-            startDate: '2022-05-01',
-            endDate: '2023-10-10',
-            createdBy: '王总工',
-            createdAt: '2022-04-15T14:45:00Z',
-            updatedAt: '2023-10-12T16:45:00Z'
-          },
-          {
-            id: 4,
-            name: '医院扩建项目',
-            code: 'PROJ-2023-005',
-            description: '市人民医院住院部扩建项目',
-            status: 'paused',
-            startDate: '2023-07-01',
-            endDate: '2025-03-31',
-            createdBy: '赵经理',
-            createdAt: '2023-06-15T11:20:00Z',
-            updatedAt: '2023-09-20T10:30:00Z'
-          }
-        ]
-      }, 500)
+    const loadProjects = async () => {
+      try {
+        const response = await api.project.getProjects()
+        projects.value = response
+      } catch (error) {
+        console.error('获取项目列表失败:', error)
+        ElMessage.error('获取项目列表失败')
+      }
     }
 
     onMounted(() => {

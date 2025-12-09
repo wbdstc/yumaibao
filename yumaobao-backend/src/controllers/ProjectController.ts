@@ -42,7 +42,7 @@ class ProjectController {
 
   static async createProject(req: Request, res: Response) {
     try {
-      const { name, description, location, startDate, endDate, status } = req.body;
+      const { name, code, description, location, startDate, endDate, status } = req.body;
       const userId = (req as any).user?.userId;
 
       if (!userId) {
@@ -51,6 +51,7 @@ class ProjectController {
 
       const project = await Project.create({
         name,
+        code,
         description,
         location,
         startDate: startDate ? new Date(startDate) : undefined,
@@ -69,7 +70,7 @@ class ProjectController {
   static async updateProject(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, location, startDate, endDate, status } = req.body;
+      const { name, code, description, location, startDate, endDate, status } = req.body;
 
       const project = await Project.findById(id);
       if (!project) {
@@ -78,6 +79,7 @@ class ProjectController {
 
       const updateData = {
         name,
+        code,
         description,
         location,
         startDate: startDate ? new Date(startDate) : undefined,

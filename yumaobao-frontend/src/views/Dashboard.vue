@@ -339,6 +339,7 @@ import {
   View
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import api from '../api/index'
 
 export default {
   name: 'Dashboard',
@@ -565,14 +566,45 @@ export default {
       const dates = []
       const installedData = []
       const inspectedData = []
-
+      
+      // 生成最近7天的日期
       for (let i = days - 1; i >= 0; i--) {
         const date = new Date()
         date.setDate(date.getDate() - i)
         dates.push(date.getMonth() + 1 + '-' + date.getDate())
-        installedData.push(Math.floor(Math.random() * 50) + 10)
-        inspectedData.push(Math.floor(Math.random() * 40) + 5)
       }
+      
+      // 初始化数据数组
+      const dailyData = dates.reduce((acc, date) => {
+        acc[date] = { installed: 0, inspected: 0 }
+        return acc
+      }, {})
+      
+      // 从预埋件数据中提取状态变更记录
+      const allEmbeddedParts = embeddedPartStore.embeddedParts
+      allEmbeddedParts.forEach(part => {
+        if (part.statusHistory) {
+          part.statusHistory.forEach(record => {
+            const recordDate = new Date(record.timestamp)
+            const dateKey = recordDate.getMonth() + 1 + '-' + recordDate.getDate()
+            
+            // 检查记录日期是否在我们的日期范围内
+            if (dailyData[dateKey] !== undefined) {
+              if (record.status === 'installed') {
+                dailyData[dateKey].installed++
+              } else if (record.status === 'inspected') {
+                dailyData[dateKey].inspected++
+              }
+            }
+          })
+        }
+      })
+      
+      // 填充安装和验收数据数组
+      dates.forEach(date => {
+        installedData.push(dailyData[date].installed)
+        inspectedData.push(dailyData[date].inspected)
+      })
 
       const option = {
         tooltip: {
@@ -623,107 +655,68 @@ export default {
     }
 
     // 加载数据
-    const loadDashboardData = () => {
-      // 模拟数据加载
-      setTimeout(() => {
-        // 项目统计
-        projectStats.totalProjects = 12
-        projectStats.activeProjects = 8
-        projectStats.completedProjects = 4
-
-        // 预埋件统计
-        embeddedPartStats.totalParts = 1560
-        embeddedPartStats.installedParts = 1248
-        embeddedPartStats.inspectedParts = 936
-        embeddedPartStats.pendingParts = 312
-
-        // 最近项目
-        recentProjects.value = [
-          {
-            id: 1,
-            name: '商业综合体项目',
-            description: 'CBD地区大型商业综合体',
-            status: 'active',
-            updatedAt: '2023-10-15T14:30:00Z'
-          },
-          {
-            id: 2,
-            name: '高层住宅项目',
-            description: '10栋30层高层住宅',
-            status: 'active',
-            updatedAt: '2023-10-14T09:15:00Z'
-          },
-          {
-            id: 3,
-            name: '地铁站项目',
-            description: '城市轨道交通地铁站',
-            status: 'completed',
-            updatedAt: '2023-10-12T16:45:00Z'
+    const loadDashboardData = async () => {
+      try {
+        loading.value = true
+        
+        // 获取项目数据
+        const projectsResponse = await api.project.getProjects()
+        const allProjects = projectsResponse.data || []
+        
+        // 获取预埋件数据
+        const embeddedPartsResponse = await api.embeddedPart.getEmbeddedParts()
+        const allEmbeddedParts = embeddedPartsResponse.data || []
+        
+        // 计算项目统计
+        projectStats.totalProjects = allProjects.length
+        projectStats.activeProjects = allProjects.filter(p => p.status === 'active').length
+        projectStats.completedProjects = allProjects.filter(p => p.status === 'completed').length
+        
+        // 计算预埋件统计
+        embeddedPartStats.totalParts = allEmbeddedParts.length
+        embeddedPartStats.installedParts = allEmbeddedParts.filter(p => p.status === 'installed').length
+        embeddedPartStats.inspectedParts = allEmbeddedParts.filter(p => p.status === 'inspected').length
+        embeddedPartStats.pendingParts = allEmbeddedParts.filter(p => p.status === 'pending').length
+        
+        // 最近项目（按更新时间排序，取前3个）
+        recentProjects.value = [...allProjects]
+          .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+          .slice(0, 3)
+        
+        // 最近扫描记录（从预埋件中提取安装/质检记录，按时间排序）
+        recentScanRecords.value = allEmbeddedParts
+          .filter(p => p.statusHistory && p.statusHistory.length > 0)
+          .flatMap(part => {
+            return part.statusHistory.map(record => ({
+              id: `${part.id}-${record.timestamp}`,
+              action: record.status === 'installed' ? 'install' : record.status === 'inspected' ? 'inspect' : 'verify',
+              status: 'completed',
+              embeddedPartName: part.identifier || part.id,
+              userName: record.updatedBy || '未知用户',
+              scanTime: record.timestamp
+            }))
+          })
+          .sort((a, b) => new Date(b.scanTime) - new Date(a.scanTime))
+          .slice(0, 3)
+        
+        // 项目列表（带预埋件统计）
+        projects.value = allProjects.map(project => {
+          const projectParts = allEmbeddedParts.filter(p => p.projectId === project.id)
+          return {
+            ...project,
+            code: project.code || `PRJ-${project.id.slice(-6).toUpperCase()}`,
+            totalEmbeddedParts: projectParts.length,
+            installedCount: projectParts.filter(p => p.status === 'installed').length,
+            inspectedCount: projectParts.filter(p => p.status === 'inspected').length
           }
-        ]
-
-        // 最近扫描记录
-        recentScanRecords.value = [
-          {
-            id: 1,
-            action: 'install',
-            status: 'completed',
-            embeddedPartName: 'YP-2023-001-0001',
-            userName: '张师傅',
-            scanTime: '2023-10-15T14:20:00Z'
-          },
-          {
-            id: 2,
-            action: 'inspect',
-            status: 'verified',
-            embeddedPartName: 'YP-2023-001-0002',
-            userName: '李质检',
-            scanTime: '2023-10-15T13:45:00Z'
-          },
-          {
-            id: 3,
-            action: 'install',
-            status: 'completed',
-            embeddedPartName: 'YP-2023-001-0003',
-            userName: '王师傅',
-            scanTime: '2023-10-15T12:30:00Z'
-          }
-        ]
-
-        // 项目列表
-        projects.value = [
-          {
-            id: 1,
-            name: '商业综合体项目',
-            code: 'PRJ-2023-001',
-            status: 'active',
-            totalEmbeddedParts: 500,
-            installedCount: 400,
-            inspectedCount: 300
-          },
-          {
-            id: 2,
-            name: '高层住宅项目',
-            code: 'PRJ-2023-002',
-            status: 'active',
-            totalEmbeddedParts: 800,
-            installedCount: 640,
-            inspectedCount: 480
-          },
-          {
-            id: 3,
-            name: '地铁站项目',
-            code: 'PRJ-2023-003',
-            status: 'completed',
-            totalEmbeddedParts: 260,
-            installedCount: 260,
-            inspectedCount: 260
-          }
-        ]
-
+        })
+        
         loading.value = false
         initCharts()
-      }, 500)
+      } catch (error) {
+        console.error('加载仪表盘数据失败:', error)
+        loading.value = false
+      }
     }
     
     // 计算完成率

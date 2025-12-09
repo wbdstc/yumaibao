@@ -1,0 +1,79 @@
+# 完整目录结构 (d:\code\cad-viewer-main)
+├── .idea\
+│   ├── .gitignore
+│   ├── cad-viewer-main.iml
+│   ├── inspectionProfiles\
+│   │   ├── Project_Default.xml
+│   │   └── profiles_settings.xml
+│   ├── misc.xml
+│   ├── modules.xml
+│   └── vcs.xml
+├── MONGODB_INSTALL_GUIDE.md
+├── cad-viewer-main\
+│   ├── .gitignore
+│   ├── .npmrc
+│   ├── .prettierignore
+│   ├── .prettierrc.js
+│   ├── LICENSE
+│   ├── package.json
+│   ├── packages\
+│   │   ├── cad-simple-viewer-example\
+│   │   ├── cad-viewer\
+│   │   ├── cad-viewer-example\
+│   │   ├── examples\
+│   │   ├── svg-renderer\
+│   │   └── three-renderer\
+│   └── tsconfig.json
+├── package-lock.json
+├── package.json
+├── query
+├── test-project-creation.js
+├── yumaobao-backend\
+│   ├── .env
+│   ├── .env.example
+│   ├── dist\
+│   │   ├── app.js
+│   │   ├── config\
+│   │   ├── controllers\
+│   │   ├── middleware\
+│   │   ├── models\
+│   │   ├── routes\
+│   │   └── utils\
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── query
+│   ├── queryUsers.js
+│   ├── src\
+│   │   ├── app.ts
+│   │   ├── config\
+│   │   ├── controllers\
+│   │   ├── middleware\
+│   │   ├── models\
+│   │   ├── routes\
+│   │   ├── types\
+│   │   └── utils\
+│   ├── tsconfig.json
+│   └── uploads\
+│       └── qrcodes\
+├── yumaobao-frontend\
+│   ├── .gitignore
+│   ├── .vscode\
+│   │   └── extensions.json
+│   ├── README.md
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── public\
+│   │   └── vite.svg
+│   ├── src\
+│   │   ├── App.vue
+│   │   ├── api\
+│   │   ├── assets\
+│   │   ├── components\
+│   │   ├── main.js
+│   │   ├── router\
+│   │   ├── stores\
+│   │   ├── style.css
+│   │   └── views\
+│   └── vite.config.js
+└── 预埋宝系统设计方案.md

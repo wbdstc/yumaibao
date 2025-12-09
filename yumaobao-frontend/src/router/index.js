@@ -7,6 +7,8 @@ import ProjectManagement from '../views/ProjectManagement.vue'
 import BIMVisualization from '../views/BIMVisualization.vue'
 import EmbeddedPartManagement from '../views/EmbeddedPartManagement.vue'
 import QRCodeScan from '../views/QRCodeScan.vue'
+import Profile from '../views/Profile.vue'
+import SystemSettings from '../views/SystemSettings.vue'
 // import UserManagement from '../views/UserManagement.vue'
 
 const routes = [
@@ -55,6 +57,16 @@ const routes = [
         component: QRCodeScan,
         meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager'] }
       },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: Profile
+      },
+      {
+        path: 'settings',
+        name: 'SystemSettings',
+        component: SystemSettings
+      }
       // {
       //   path: 'users',
       //   name: 'UserManagement',

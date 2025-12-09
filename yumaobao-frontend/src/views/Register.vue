@@ -20,11 +20,11 @@
             autocomplete="off"
           />
         </el-form-item>
-        <el-form-item prop="email">
+        <el-form-item prop="phone">
           <el-input
-            v-model="registerForm.email"
-            placeholder="邮箱"
-            prefix-icon="Message"
+            v-model="registerForm.phone"
+            placeholder="手机号"
+            prefix-icon="Mobile"
             clearable
             autocomplete="off"
           />
@@ -99,7 +99,7 @@ export default {
     
     const registerForm = ref({
       name: '',
-      email: '',
+      phone: '',
       password: '',
       confirmPassword: '',
       role: 'installer' // 默认角色为安装人员
@@ -110,9 +110,9 @@ export default {
         { required: true, message: '请输入姓名', trigger: 'blur' },
         { min: 2, max: 20, message: '姓名长度在 2 到 20 个字符', trigger: 'blur' }
       ],
-      email: [
-        { required: true, message: '请输入邮箱', trigger: 'blur' },
-        { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+      phone: [
+        { required: true, message: '请输入手机号', trigger: 'blur' },
+        { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }
       ],
       password: [
         { required: true, message: '请输入密码', trigger: 'blur' },
@@ -149,12 +149,12 @@ export default {
               ElMessage.success('注册成功')
               // 注册成功后自动登录
               return api.user.login({
-                email: registerForm.value.email,
+                phone: registerForm.value.phone,
                 password: registerForm.value.password
               })
             })
             .then(loginResponse => {
-              userStore.login(loginResponse.user, loginResponse.token)
+              userStore.login(loginResponse.data.user, loginResponse.data.token)
               // 跳转到首页
               router.push('/')
             })
