@@ -97,6 +97,22 @@ export default {
     },
     deleteProfile() {
       return api.delete('/users/profile')
+    },
+    // 用户管理相关API
+    getUsers(params) {
+      return api.get('/users', { params })
+    },
+    getUser(id) {
+      return api.get(`/users/${id}`)
+    },
+    createUser(data) {
+      return api.post('/users', data)
+    },
+    updateUser(id, data) {
+      return api.put(`/users/${id}`, data)
+    },
+    deleteUser(id) {
+      return api.delete(`/users/${id}`)
     }
   },
   // 项目相关API
@@ -171,7 +187,7 @@ export default {
       })
     },
     uploadBIMModel(data) {
-      return api.post('/models/upload', data, {
+      return api.post('/models', data, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
+import Project from '../models/Project';
 import { hashPassword, verifyPassword, generateJWT } from '../utils/auth';
 
 interface RegisterRequest {
@@ -8,6 +9,7 @@ interface RegisterRequest {
   phone: string;
   password: string;
   role: 'admin' | 'projectManager' | 'projectEngineer' | 'qualityInspector' | 'installer';
+  projects?: string[]; // 可选的项目ID数组，用于注册时分配项目
 }
 
 interface LoginRequest {
@@ -43,8 +45,20 @@ class UserController {
         email,
         phone,
         password: hashedPassword,
-        role
+        role,
+        projects: req.body.projects || [] // 添加项目关联
       });
+      
+      // 如果有分配项目，同时更新项目的用户列表
+      if (req.body.projects && req.body.projects.length > 0) {
+        for (const projectId of req.body.projects) {
+          const project = await Project.findById(projectId);
+          if (project && !project.users.includes(newUser.id)) {
+            project.users.push(newUser.id);
+            await Project.update(projectId, { users: project.users });
+          }
+        }
+      }
       
       // 生成JWT令牌
       const token = generateJWT(String(newUser.id), newUser.role as string);
@@ -58,7 +72,8 @@ class UserController {
           email: newUser.email,
           role: newUser.role,
           phone: newUser.phone,
-          avatar: newUser.avatar
+          avatar: newUser.avatar,
+          projects: newUser.projects
         },
         token
       });
@@ -102,7 +117,8 @@ class UserController {
           email: user.email,
           role: user.role,
           phone: user.phone,
-          avatar: user.avatar
+          avatar: user.avatar,
+          projects: user.projects
         },
         token
       });
@@ -115,7 +131,7 @@ class UserController {
   // 获取当前用户信息
   static async getCurrentUser(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       
       // 查找用户
       const user = await User.findById(userId);
@@ -184,7 +200,7 @@ class UserController {
   static async updateUser(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, email, role, phone, avatar } = req.body;
+      const { name, email, role, phone, avatar, projects } = req.body;
       
       // 检查用户是否存在
       const existingUser = await User.findById(id);
@@ -208,6 +224,38 @@ class UserController {
         phone: phone || existingUser.phone,
         avatar: avatar || existingUser.avatar
       };
+      
+      // 处理项目关联更新
+      if (projects !== undefined) {
+        updateData.projects = projects;
+        
+        // 获取用户当前关联的项目
+        const currentProjects = existingUser.projects || [];
+        
+        // 找出需要添加的项目（新的项目不在当前项目列表中）
+        const projectsToAdd = projects.filter((p: string) => !currentProjects.includes(p));
+        
+        // 找出需要移除的项目（当前项目不在新项目列表中）
+        const projectsToRemove = currentProjects.filter((p: string) => !projects.includes(p));
+        
+        // 更新需要添加的项目的用户列表
+        for (const projectId of projectsToAdd) {
+          const project = await Project.findById(projectId);
+          if (project && !project.users.includes(id)) {
+            project.users.push(id);
+            await Project.update(projectId, { users: project.users });
+          }
+        }
+        
+        // 更新需要移除的项目的用户列表
+        for (const projectId of projectsToRemove) {
+          const project = await Project.findById(projectId);
+          if (project) {
+            project.users = project.users.filter((userId: string) => userId !== id);
+            await Project.update(projectId, { users: project.users });
+          }
+        }
+      }
       
       const updatedUser = await User.update(id, updateData);
       
@@ -254,7 +302,7 @@ class UserController {
   // 更新个人信息
   static async updateProfile(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       const { name, phone, avatar } = req.body;
       
       // 检查用户是否存在
@@ -292,7 +340,7 @@ class UserController {
   // 删除个人账号
   static async deleteProfile(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       
       // 检查用户是否存在
       const existingUser = await User.findById(userId);

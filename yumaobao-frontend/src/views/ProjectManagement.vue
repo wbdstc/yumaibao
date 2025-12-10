@@ -53,8 +53,8 @@
       </el-row>
     </div>
 
-    <!-- 项目列表 -->
-    <el-card shadow="hover" class="project-list-card">
+    <!-- 项目列表 - 桌面版表格 -->
+    <el-card shadow="hover" class="project-list-card project-list-table">
       <el-table
         :data="filteredProjects"
         style="width: 100%"
@@ -120,6 +120,72 @@
         />
       </div>
     </el-card>
+
+    <!-- 项目列表 - 移动端卡片 -->
+    <div class="project-list-mobile">
+      <el-card
+        v-for="project in filteredProjects"
+        :key="project.id"
+        shadow="hover"
+        class="project-card"
+        @click="viewProject(project)"
+      >
+        <div class="project-card-header">
+          <h3 class="project-card-title">{{ project.name }}</h3>
+          <el-tag :class="['status-tag', project.status === 'under_construction' ? 'tag-construction' : project.status === 'completed' ? 'tag-completed' : 'tag-planning']">
+            {{ project.status === 'planning' ? '规划中' : project.status === 'under_construction' ? '施工中' : '已完成' }}
+          </el-tag>
+        </div>
+        <div class="project-card-content">
+          {{ project.description || '暂无项目描述' }}
+        </div>
+        <div class="project-card-meta">
+          <div><strong>编号:</strong> {{ project.code }}</div>
+          <div><strong>开始:</strong> {{ project.startDate }}</div>
+          <div><strong>结束:</strong> {{ project.endDate }}</div>
+          <div><strong>创建人:</strong> {{ project.createdBy }}</div>
+        </div>
+        <div class="project-card-actions">
+          <el-button
+            type="primary"
+            size="small"
+            @click.stop="viewProject(project)"
+          >
+            <el-icon><View /></el-icon>
+            查看
+          </el-button>
+          <el-button
+            type="warning"
+            size="small"
+            @click.stop="showEditProjectDialog(project)"
+          >
+            <el-icon><Edit /></el-icon>
+            编辑
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            @click.stop="showDeleteConfirm(project)"
+          >
+            <el-icon><Delete /></el-icon>
+            删除
+          </el-button>
+        </div>
+      </el-card>
+
+      <!-- 移动端分页 -->
+      <div class="pagination">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          layout="total, prev, pager, next"
+          :total="filteredProjects.length"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
+    </div>
 
     <!-- 新建项目对话框 -->
     <el-dialog
@@ -330,9 +396,25 @@ export default {
       ]
     }
 
+    // 计算是否为受限用户（安装人员或质检人员）
+    const isRestrictedUser = computed(() => {
+      const userRole = userStore.userRole
+      return userRole === 'installer' || userRole === 'qualityInspector'
+    })
+
+    // 用户所在项目ID
+    const userProjects = computed(() => {
+      return userStore.userInfo?.projects || []
+    })
+
     // 筛选后的项目
     const filteredProjects = computed(() => {
       let result = [...projects.value]
+
+      // 项目锁定：安装人员和质检人员只能看到自己所在的项目
+      if (isRestrictedUser.value && userProjects.value.length > 0) {
+        result = result.filter(project => userProjects.value.includes(project.id))
+      }
 
       // 搜索筛选
       if (searchQuery.value) {
@@ -557,6 +639,64 @@ export default {
   box-sizing: border-box;
 }
 
+/* 移动端项目列表默认隐藏 */
+.project-list-mobile {
+  display: none;
+}
+
+.project-card {
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.project-card:hover {
+  transform: translateY(-2px);
+}
+
+.project-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.project-card-title {
+  font-size: 16px;
+  margin: 0;
+}
+
+.project-card-content {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #666;
+}
+
+.project-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.project-card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* 搜索筛选区域 */
+.search-filter {
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+/* 项目列表表格容器 */
+.project-list-table {
+  overflow-x: auto;
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -690,136 +830,82 @@ export default {
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
+    gap: 10px;
+    padding: 0 16px;
   }
-  
-  /* 搜索筛选区域在小屏幕上垂直堆叠 */
-  .search-filter .el-row {
-    gap: 16px;
+
+  .search-filter {
+    padding: 0 16px;
   }
-  
-  .search-filter .el-col {
-    width: 100% !important;
+
+  .el-row {
+    margin-left: 0;
+    margin-right: 0;
   }
-  
-  /* 表格容器设置横向滚动 */
-  .project-list-card {
-    overflow-x: auto;
+
+  .project-management-container {
+    padding: 10px;
   }
-  
-  /* 表格在小屏幕上调整 */
-  :deep(.el-table) {
+}
+
+@media (max-width: 768px) {
+  /* 隐藏桌面端表格，显示移动端卡片 */
+  .project-list-table {
+    display: none;
+  }
+
+  .project-list-mobile {
+    display: block;
+    padding: 0 16px;
+  }
+
+  .page-header {
+    padding: 0 10px;
+  }
+
+  .search-filter {
+    padding: 0 10px;
+    margin-bottom: 10px;
+  }
+
+  .el-col {
     width: 100%;
-    min-width: 800px;
+    margin-bottom: 10px;
   }
-  
-  /* 分页在小屏幕上居中 */
-  .pagination {
-    text-align: center;
+
+  .project-management-container {
+    padding: 5px;
   }
-  
+
+  .project-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .project-card-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .project-card-actions .el-button {
+    flex: 1;
+    min-width: 80px;
+  }
+
+  /* 对话框 */
+  .el-dialog {
+    margin: 0 10px;
+    width: auto !important;
+    max-width: 100%;
+  }
+
   /* 按钮在小屏幕上调整 */
   .el-button {
     padding: 8px 12px !important;
     font-size: 14px !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .project-management-container {
-    padding: 0 8px;
-  }
-  
-  .page-header {
-    padding: 0 8px;
-  }
-  
-  .search-filter {
-    padding: 12px;
-    margin: 0 8px 24px;
-  }
-  
-  .project-list-card {
-    margin: 0 8px;
-  }
-  
-  /* 对话框在小屏幕上占满宽度 */
-  :deep(.el-dialog) {
-    width: calc(100% - 32px) !important;
-    margin: 16px;
-  }
-  
-  /* 表单标签宽度调整 */
-  :deep(.el-form-item__label) {
-    width: 100px !important;
-  }
-  
-  /* 操作按钮在小屏幕上堆叠 */
-  :deep(.el-table__column--fixed-right .el-button) {
-    margin-bottom: 8px !important;
-    width: 100% !important;
-  }
-  
-  /* 移动端卡片式布局 */
-  .project-list-mobile {
-    display: none;
-  }
-  
-  @media (max-width: 600px) {
-    .project-list-table {
-      display: none;
-    }
-    
-    .project-list-mobile {
-      display: block;
-    }
-    
-    .project-card {
-      margin-bottom: 16px;
-      padding: 16px;
-      background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
-      border: 1px solid var(--steel-silver);
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-    }
-    
-    .project-card:hover {
-      box-shadow: 0 4px 16px rgba(30, 58, 95, 0.15);
-      transform: translateY(-2px);
-    }
-    
-    .project-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    
-    .project-card-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--construction-blue);
-    }
-    
-    .project-card-content {
-      margin-bottom: 12px;
-      font-size: 14px;
-      color: var(--concrete-gray);
-    }
-    
-    .project-card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 12px;
-      color: var(--steel-silver);
-      margin-bottom: 12px;
-    }
   }
 }
 </style>

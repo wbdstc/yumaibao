@@ -3,8 +3,21 @@
     <!-- 侧边导航栏 -->
     <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="logo">
-        <h2 v-if="!sidebarCollapsed">预埋宝</h2>
-        <h2 v-else>预</h2>
+        <div class="logo-container">
+          <img 
+            v-if="!sidebarCollapsed" 
+            src="../assets/logo-full.png" 
+            alt="预埋宝"
+            class="logo-img logo-img-full"
+          />
+          <span v-if="!sidebarCollapsed" class="logo-text">预埋宝</span>
+          <img 
+            v-else 
+            src="../assets/logo-icon.png" 
+            alt="预"
+            class="logo-img logo-img-icon"
+          />
+        </div>
       </div>
       <el-menu
         :default-active="activeIndex"
@@ -12,40 +25,55 @@
         router
         :collapse="sidebarCollapsed"
       >
-        <el-menu-item index="/">
+        <!-- 仪表盘菜单项 - 仅管理员、项目经理和工程师可见 -->
+        <el-menu-item index="/" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
           <el-icon><House /></el-icon>
           <template #title>
             <span>仪表盘</span>
           </template>
         </el-menu-item>
-        <el-menu-item index="/projects">
+        <!-- 项目管理菜单项 - 仅管理员、项目经理和工程师可见 -->
+        <el-menu-item index="/projects" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
           <el-icon><OfficeBuilding /></el-icon>
           <template #title>
             <span>项目管理</span>
           </template>
         </el-menu-item>
+        <!-- BIM可视化菜单项 - 所有角色可见 -->
         <el-menu-item index="/bim">
           <el-icon><PictureFilled /></el-icon>
           <template #title>
             <span>BIM可视化</span>
           </template>
         </el-menu-item>
-        <el-menu-item index="/embedded-parts">
+        <!-- 预埋件管理菜单项 - 仅管理员、项目经理和工程师可见 -->
+        <el-menu-item index="/embedded-parts" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
           <el-icon><Box /></el-icon>
           <template #title>
             <span>预埋件管理</span>
           </template>
         </el-menu-item>
-        <!-- 扫码管理菜单项暂不显示 -->
-        <!-- <el-menu-item index="/scan">
-          <el-icon><Scan /></el-icon>
-          <span>扫码管理</span>
-        </el-menu-item> -->
-        <!-- 用户管理菜单项暂不显示 -->
-        <!-- <el-menu-item index="/users" v-if="userStore.userInfo?.role === 'admin'">
+        <!-- 扫码管理菜单项 -->
+        <el-menu-item index="/scan" v-if="['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
+          <el-icon><View /></el-icon>
+          <template #title>
+            <span>扫码管理</span>
+          </template>
+        </el-menu-item>
+        <!-- 用户管理菜单项 -->
+        <el-menu-item index="/users" v-if="userStore.userInfo?.role === 'admin'">
           <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item> -->
+          <template #title>
+            <span>用户管理</span>
+          </template>
+        </el-menu-item>
+        <!-- 项目统计菜单项 - 所有角色可见 -->
+        <el-menu-item index="/project-statistics">
+          <el-icon><TrendCharts /></el-icon>
+          <template #title>
+            <span>项目统计</span>
+          </template>
+        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -88,6 +116,34 @@
         <router-view />
       </div>
     </main>
+
+    <!-- 移动端底部导航栏 -->
+    <div class="mobile-bottom-nav">
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/' }" @click="$router.push('/')">
+        <el-icon><House /></el-icon>
+        <span>仪表盘</span>
+      </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/projects' }" @click="$router.push('/projects')" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
+        <el-icon><OfficeBuilding /></el-icon>
+        <span>项目管理</span>
+      </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/bim' }" @click="$router.push('/bim')" v-if="['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'].includes(userStore.userInfo?.role)">
+        <el-icon><PictureFilled /></el-icon>
+        <span>BIM可视化</span>
+      </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/embedded-parts' }" @click="$router.push('/embedded-parts')" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
+        <el-icon><Box /></el-icon>
+        <span>预埋件管理</span>
+      </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/scan' }" @click="$router.push('/scan')" v-if="['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
+        <el-icon><View /></el-icon>
+        <span>扫码管理</span>
+      </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/project-statistics' }" @click="$router.push('/project-statistics')">
+        <el-icon><TrendCharts /></el-icon>
+        <span>项目统计</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -103,7 +159,10 @@ import {
   Menu,
   ArrowDown,
   Setting,
-  SwitchButton
+  SwitchButton,
+  View,
+  User,
+  TrendCharts
 } from '@element-plus/icons-vue'
 
 export default {
@@ -116,12 +175,16 @@ export default {
     Menu,
     ArrowDown,
     Setting,
-    SwitchButton
+    SwitchButton,
+    View,
+    User,
+    TrendCharts
   },
   setup() {
     const router = useRouter()
     const userStore = useUserStore()
-    const sidebarCollapsed = ref(false)
+    // 在移动端默认隐藏侧边栏
+    const sidebarCollapsed = ref(window.innerWidth <= 768)
     
     const activeIndex = computed(() => {
       return router.currentRoute.value.path
@@ -177,13 +240,40 @@ export default {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
 }
 
-.logo h2 {
-  margin: 0;
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.logo-text {
   color: #fff;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 1px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+/* 图片logo样式 */
+.logo-img {
+  margin: 0;
+  width: auto;
+  height: auto;
+  display: block;
+}
+
+/* 完整logo样式 */
+.logo-img-full {
+  width: 36px;
+  height: 36px;
+}
+
+/* 折叠状态下的图标样式 */
+.logo-img-icon {
+  width: 32px;
+  height: 32px;
 }
 
 .sidebar-menu {
@@ -300,20 +390,16 @@ export default {
   background-color: #f8f9fa;
 }
 
+/* 移动端底部导航栏 - 默认隐藏 */
+.mobile-bottom-nav {
+  display: none;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
+  /* 移动端侧边栏 - 完全隐藏 */
   .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    z-index: 1000;
-    transform: translateX(0);
-  }
-  
-  .sidebar-collapsed {
-    transform: translateX(-100%);
-    width: 220px;
+    display: none;
   }
   
   .main-content {
@@ -324,7 +410,7 @@ export default {
     padding: 16px;
   }
   
-  /* 移动端底部导航栏 */
+  /* 移动端底部导航栏 - 仅在移动端显示 */
   .mobile-bottom-nav {
     display: flex;
     position: fixed;

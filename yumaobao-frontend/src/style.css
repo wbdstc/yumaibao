@@ -20,6 +20,28 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* 字体大小变量 */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 28px;
+  
+  /* 间距变量 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-base: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  
+  /* 响应式断点 */
+  --breakpoint-mobile: 768px;
+  --breakpoint-sm-mobile: 480px;
+  --breakpoint-tablet: 1024px;
 }
 
 a {
@@ -59,6 +81,10 @@ button {
   transition: all 0.3s ease;
   min-width: 44px;
   min-height: 44px;
+  /* 触摸反馈优化 */
+  touch-action: manipulation;
+  /* 防止双击缩放 */
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 }
 button:hover {
   background-color: #1a2f49;
@@ -69,6 +95,93 @@ button:focus,
 button:focus-visible {
   outline: 2px solid var(--safety-orange);
   outline-offset: 2px;
+}
+button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(30, 58, 95, 0.4);
+}
+
+/* 移动端交互体验优化 */
+@media (max-width: 768px) {
+  /* 增大按钮点击区域 */
+  button {
+    min-width: 48px;
+    min-height: 48px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  
+  /* 增大链接点击区域 */
+  a {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    /* 触摸反馈 */
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  }
+  
+  /* 增大输入框点击区域 */
+  input, textarea, select {
+    min-height: 44px;
+    padding: 10px;
+    font-size: 14px;
+  }
+  
+  /* 增大复选框和单选按钮点击区域 */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+  }
+  
+  /* 增大图标按钮点击区域 */
+  .el-button--icon-only {
+    width: 44px;
+    height: 44px;
+  }
+  
+  /* 禁止文本选择以优化滚动体验 */
+  body {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  /* 优化滚动体验 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  /* 手势支持 */
+  .swipe-container {
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  
+  /* 长按菜单优化 */
+  .long-press-menu {
+    position: absolute;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    padding: 8px;
+    z-index: 1000;
+  }
+  
+  .long-press-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 4px;
+  }
+  
+  .long-press-menu button:last-child {
+    margin-bottom: 0;
+  }
 }
 
 /* 蓝图网格背景 */
@@ -136,6 +249,12 @@ button:focus-visible {
   background: linear-gradient(135deg, var(--construction-blue) 0%, #1a2f49 100%);
   position: relative;
   overflow: hidden;
+  /* 移动端优化：增大触摸区域 */
+  min-width: 48px;
+  min-height: 48px;
+  padding: 10px 20px;
+  /* 触摸反馈优化 */
+  touch-action: manipulation;
 }
 
 .glossy-button::before {
@@ -159,6 +278,12 @@ button:focus-visible {
   animation: shine 0.6s ease-in-out;
 }
 
+/* 移动端触摸反馈 */
+.glossy-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(30, 58, 95, 0.4);
+}
+
 @keyframes shine {
   0% {
     transform: translateX(-100%) translateY(-100%) rotate(45deg);
@@ -173,11 +298,95 @@ html {
   font-size: clamp(14px, 2vw, 16px);
 }
 
+/* 基础元素字体大小 */
+body {
+  font-size: var(--font-size-base);
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+}
+
+h2 {
+  font-size: var(--font-size-2xl);
+}
+
+h3 {
+  font-size: var(--font-size-xl);
+}
+
+h4 {
+  font-size: var(--font-size-lg);
+}
+
+p {
+  font-size: var(--font-size-base);
+}
+
+small {
+  font-size: var(--font-size-xs);
+}
+
 /* 触摸友好设计 */
 .touch-friendly {
   min-width: 44px;
   min-height: 44px;
   padding: 8px 16px;
+}
+
+/* 响应式字体大小和间距调整 */
+@media (max-width: 1024px) {
+  h1 {
+    font-size: var(--font-size-2xl);
+  }
+  
+  h2 {
+    font-size: var(--font-size-xl);
+  }
+  
+  h3 {
+    font-size: var(--font-size-lg);
+  }
+  
+  h4 {
+    font-size: var(--font-size-base);
+  }
+}
+
+@media (max-width: 768px) {
+  h1 {
+    font-size: var(--font-size-xl);
+  }
+  
+  h2 {
+    font-size: var(--font-size-lg);
+  }
+  
+  h3 {
+    font-size: var(--font-size-base);
+  }
+  
+  h4 {
+    font-size: var(--font-size-sm);
+  }
+  
+  p {
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  h1 {
+    font-size: var(--font-size-lg);
+  }
+  
+  h2 {
+    font-size: var(--font-size-base);
+  }
+  
+  h3 {
+    font-size: var(--font-size-sm);
+  }
 }
 
 #app {
@@ -205,4 +414,154 @@ html {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--concrete-gray);
+}
+
+/* 移动端复杂组件优化 */
+/* 表格优化 */
+@media (max-width: 768px) {
+  /* 表格容器横向滚动 */
+  .el-table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 16px;
+  }
+
+  /* 表格单元格内边距调整 */
+  .el-table__cell {
+    padding: 8px 6px !important;
+    font-size: 12px;
+  }
+
+  /* 表格头部优化 */
+  .el-table__header-wrapper th {
+    padding: 10px 6px !important;
+    font-size: 12px;
+  }
+
+  /* 隐藏某些不重要的列 */
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* 表单优化 */
+  .el-form {
+    padding: 10px;
+  }
+
+  .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .el-form-item__label {
+    font-size: 13px;
+    padding-right: 8px;
+  }
+
+  .el-form-item__content {
+    font-size: 13px;
+  }
+
+  /* 输入框优化 */
+  .el-input__inner,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    font-size: 14px;
+    padding: 8px;
+    min-height: 40px;
+  }
+
+  /* 对话框优化 */
+  .el-dialog {
+    margin: 10px !important;
+    width: calc(100% - 20px) !important;
+    max-width: calc(100% - 20px) !important;
+  }
+
+  .el-dialog__header {
+    padding: 16px;
+  }
+
+  .el-dialog__body {
+    padding: 16px;
+    font-size: 14px;
+  }
+
+  .el-dialog__footer {
+    padding: 16px;
+  }
+
+  /* 分页组件优化 */
+  .el-pagination {
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  .el-pagination__sizes {
+    margin: 0 5px;
+  }
+
+  /* 标签页优化 */
+  .el-tabs__nav {
+    padding: 0 10px;
+  }
+
+  .el-tabs__item {
+    font-size: 13px;
+    padding: 10px 8px;
+  }
+
+  /* 消息提示优化 */
+  .el-message {
+    max-width: calc(100% - 20px);
+    margin: 10px;
+  }
+
+  /* 通知提示优化 */
+  .el-notification {
+    max-width: calc(100% - 20px);
+    margin: 10px;
+  }
+
+  /* 抽屉优化 */
+  .el-drawer {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* 小屏幕移动端进一步优化 */
+@media (max-width: 480px) {
+  /* 表格单元格进一步压缩 */
+  .el-table__cell {
+    padding: 6px 4px !important;
+    font-size: 11px;
+  }
+
+  /* 表单标签垂直排列 */
+  .el-form--label-right .el-form-item__label {
+    text-align: left;
+    width: 100% !important;
+  }
+
+  .el-form--label-right .el-form-item__content {
+    margin-left: 0 !important;
+  }
+
+  /* 按钮大小优化 */
+  .el-button {
+    font-size: 13px;
+    padding: 8px 12px;
+    min-height: 40px;
+  }
+
+  /* 图标按钮优化 */
+  .el-button--icon-only {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 下拉菜单优化 */
+  .el-dropdown-menu {
+    min-width: 120px;
+    font-size: 13px;
+  }
 }

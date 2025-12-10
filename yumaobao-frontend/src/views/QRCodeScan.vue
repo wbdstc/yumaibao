@@ -173,11 +173,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { Camera, VideoPlay, VideoPause, Picture, RefreshRight } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 import api from '../api/index.js'
+import { useUserStore } from '../stores/index.js'
 
 // 扫描状态
 const scanning = ref(false)
@@ -332,6 +333,20 @@ const startQRScan = () => {
 const localCache = ref(new Map())
 const CACHE_EXPIRY = 5 * 60 * 1000 // 5分钟缓存过期时间
 
+// 用户信息和角色
+const userStore = useUserStore()
+
+// 判断用户是否是安装人员或质检人员
+const isRestrictedUser = computed(() => {
+  const role = userStore.userRole
+  return role === 'installer' || role === 'qualityInspector'
+})
+
+// 获取用户可访问的项目ID
+const userProjects = computed(() => {
+  return userStore.userInfo?.projects || []
+})
+
 // 处理扫描结果
 const processScanResult = async (qrCodeData) => {
   try {
@@ -344,6 +359,13 @@ const processScanResult = async (qrCodeData) => {
     // 首先检查本地缓存
     const cachedItem = localCache.get(qrCodeData)
     if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_EXPIRY) {
+      // 检查项目权限
+      if (isRestrictedUser.value && !userProjects.value.includes(cachedItem.data.projectId)) {
+        ElMessage.error('您没有权限查看该项目的预埋件')
+        addToHistory('error', '扫描失败', '无权限查看该项目的预埋件')
+        return
+      }
+      
       scanResult.value = cachedItem.data
       ElMessage.success('从本地缓存加载成功')
       addToHistory('success', '扫描成功', `扫描到预埋件: ${cachedItem.data.name} (${cachedItem.data.code})`)
@@ -352,6 +374,14 @@ const processScanResult = async (qrCodeData) => {
 
     // 调用后端API验证二维码
     const response = await api.mobile.scanQRCode({ qrCodeData })
+    
+    // 检查项目权限
+    if (isRestrictedUser.value && !userProjects.value.includes(response.data.projectId)) {
+      ElMessage.error('您没有权限查看该项目的预埋件')
+      addToHistory('error', '扫描失败', '无权限查看该项目的预埋件')
+      return
+    }
+    
     scanResult.value = response.data
     
     // 保存到本地缓存

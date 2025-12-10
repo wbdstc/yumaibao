@@ -9,7 +9,9 @@ import EmbeddedPartManagement from '../views/EmbeddedPartManagement.vue'
 import QRCodeScan from '../views/QRCodeScan.vue'
 import Profile from '../views/Profile.vue'
 import SystemSettings from '../views/SystemSettings.vue'
-// import UserManagement from '../views/UserManagement.vue'
+import UploadTest from '../views/UploadTest.vue'
+import UserManagement from '../views/UserManagement.vue'
+import ProjectStatistics from '../views/ProjectStatistics.vue'
 
 const routes = [
   {
@@ -28,35 +30,16 @@ const routes = [
     component: Layout,
     meta: { requiresAuth: true },
     children: [
-      {
-        path: '',
-        name: 'Dashboard',
-        component: Dashboard
-      },
+      {        path: '',        name: 'Dashboard',        component: Dashboard,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }      },
       {
         path: 'projects',
         name: 'ProjectManagement',
         component: ProjectManagement,
         meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }
       },
-      {
-        path: 'bim',
-        name: 'BIMVisualization',
-        component: BIMVisualization,
-        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
-      },
-      {
-        path: 'embedded-parts',
-        name: 'EmbeddedPartManagement',
-        component: EmbeddedPartManagement,
-        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'] }
-      },
-      {
-        path: 'scan',
-        name: 'QRCodeScan',
-        component: QRCodeScan,
-        meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager'] }
-      },
+      {        path: 'bim',        name: 'BIMVisualization',        component: BIMVisualization,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }      },
+      {        path: 'embedded-parts',        name: 'EmbeddedPartManagement',        component: EmbeddedPartManagement,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }      },
+      {        path: 'scan',        name: 'QRCodeScan',        component: QRCodeScan,        meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'] }      },
       {
         path: 'profile',
         name: 'Profile',
@@ -66,13 +49,24 @@ const routes = [
         path: 'settings',
         name: 'SystemSettings',
         component: SystemSettings
+      },
+      {
+        path: 'upload-test',
+        name: 'UploadTest',
+        component: UploadTest
+      },
+      {
+        path: 'users',
+        name: 'UserManagement',
+        component: UserManagement,
+        meta: { requiresRole: ['admin', 'projectManager', 'projectEngineer'] }
+      },
+      {
+        path: 'project-statistics',
+        name: 'ProjectStatistics',
+        component: ProjectStatistics,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }
       }
-      // {
-      //   path: 'users',
-      //   name: 'UserManagement',
-      //   component: UserManagement,
-      //   meta: { requiresRole: ['admin'] }
-      // }
     ]
   }
 ]
@@ -102,8 +96,14 @@ router.beforeEach((to, from, next) => {
         if (requiresRole.includes(user.role)) {
           next()
         } else {
-          // 没有权限，重定向到仪表板
-          next({ name: 'Dashboard' })
+          // 没有权限，根据用户角色重定向到合适的页面
+          if (['installer', 'qualityInspector'].includes(user.role)) {
+            // 安装人员和质检人员重定向到BIM可视化页面
+            next({ name: 'BIMVisualization' })
+          } else {
+            // 其他用户重定向到仪表盘
+            next({ name: 'Dashboard' })
+          }
         }
       } else {
         next()

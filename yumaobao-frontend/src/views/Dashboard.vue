@@ -1210,6 +1210,18 @@ export default {
   color: #e8e8e8;
 }
 
+/* 表格容器 */
+.projects-section {
+  overflow-x: auto;
+}
+
+/* 对话框 */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .charts-section {
@@ -1222,29 +1234,111 @@ export default {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+    padding: 0 16px;
+  }
+  
+  .page-header h2 {
+    font-size: 20px;
   }
   
   .header-actions {
     width: 100%;
     flex-wrap: wrap;
+    padding: 0 16px;
   }
   
   .stats-cards {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+    padding: 0 16px;
+    gap: 12px;
   }
 
   .dashboard-content {
     grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+
+  .charts-section {
+    padding: 0 16px;
+    gap: 16px;
+  }
+
+  .projects-section {
+    padding: 0 16px;
   }
 
   .stat-value {
     font-size: 24px;
   }
+
+  .chart {
+    height: 250px;
+  }
+
+  .chart-container {
+    padding: 12px;
+  }
+
+  .project-item {
+    padding: 12px;
+  }
+
+  .project-item h4 {
+    font-size: 15px;
+  }
+
+  .project-description {
+    font-size: 13px;
+  }
+
+  .card-header h3 {
+    font-size: 16px;
+  }
 }
-/* 对话框 */
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+
+@media (max-width: 480px) {
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-value {
+    font-size: 28px;
+  }
+
+  .chart {
+    height: 200px;
+  }
+
+  .el-date-picker {
+    width: 100%;
+  }
+
+  .header-actions .el-button {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .section-header h3 {
+    font-size: 16px;
+  }
+
+  .el-table {
+    font-size: 12px;
+  }
+
+  .el-table-column {
+    padding: 8px 4px;
+  }
+
+  .el-button--small {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
 }
 </style>

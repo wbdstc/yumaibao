@@ -13,6 +13,7 @@ export interface ProjectAttributes {
   endDate?: Date;
   status: 'planning' | 'under_construction' | 'completed';
   createdBy: string;
+  users: string[]; // 关联的用户ID数组
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +27,7 @@ export interface ProjectCreationAttributes {
   endDate?: Date;
   status?: 'planning' | 'under_construction' | 'completed';
   createdBy: string;
+  users?: string[]; // 可选的用户ID数组，用于创建时分配用户
 }
 
 class ProjectModel {
@@ -50,6 +52,7 @@ class ProjectModel {
       id: uuidv4(),
       status: 'planning', // 默认状态
       ...projectData,
+      users: projectData.users || [], // 确保users始终是数组
       createdAt: now,
       updatedAt: now
     };
@@ -61,6 +64,10 @@ class ProjectModel {
   // 根据ID查找项目
   async findById(id: string): Promise<ProjectAttributes | null> {
     const project = await this.getCollection().findOne<ProjectAttributes>({ id });
+    // 确保users字段始终是数组
+    if (project && !project.users) {
+      project.users = [];
+    }
     return project;
   }
 

@@ -11,10 +11,11 @@ router.post('/login', UserController.login);
 // 需要认证的路由
 router.get('/me', authenticate, UserController.getCurrentUser);
 
-// 需要管理员权限的路由
-router.get('/', authenticate, authorize('admin'), UserController.getAllUsers);
-router.get('/:id', authenticate, authorize('admin'), UserController.getUserById);
-router.put('/:id', authenticate, authorize('admin'), UserController.updateUser);
+// 需要管理员、项目工程师或项目管理员权限的路由
+router.get('/', authenticate, authorize('admin', 'projectManager', 'projectEngineer'), UserController.getAllUsers);
+router.get('/:id', authenticate, authorize('admin', 'projectManager', 'projectEngineer'), UserController.getUserById);
+router.post('/', authenticate, authorize('admin', 'projectManager', 'projectEngineer'), UserController.register);
+router.put('/:id', authenticate, authorize('admin', 'projectManager', 'projectEngineer'), UserController.updateUser);
 router.delete('/:id', authenticate, authorize('admin'), UserController.deleteUser);
 
 // 个人信息管理路由

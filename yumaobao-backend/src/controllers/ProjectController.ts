@@ -2,12 +2,36 @@ import { Request, Response } from 'express';
 import Project from '../models/Project';
 import Floor from '../models/Floor';
 import Model from '../models/Model';
+import User from '../models/User';
 
 class ProjectController {
   // 项目管理
-  static async getAllProjects(_req: Request, res: Response) {
+  static async getAllProjects(req: Request, res: Response) {
     try {
-      const projects = await Project.findAll();
+      const user = (req as any).user;
+      let projects: any[];
+      
+      if (!user) {
+        // 未登录用户（如注册页面）可以查看所有项目用于选择
+        projects = await Project.findAll();
+      } else if (user.role === 'admin') {
+        // 管理员可以查看所有项目
+        projects = await Project.findAll();
+      } else if (user.role === 'projectManager' || user.role === 'projectEngineer') {
+        // 项目管理员和工程师可以查看自己创建的项目
+        projects = await Project.findByUserId(user.id);
+      } else if (user.role === 'qualityInspector' || user.role === 'installer') {
+        // 质检人员和安装人员只能查看自己关联的项目
+        const userData = await User.findById(user.id);
+        if (userData && userData.projects && userData.projects.length > 0) {
+          projects = await Project.findAll({ id: { $in: userData.projects } });
+        } else {
+          projects = [];
+        }
+      } else {
+        return res.status(403).json({ message: '无权访问项目列表' });
+      }
+      
       return res.status(200).json(projects);
     } catch (error) {
       console.error('获取项目列表失败:', error);

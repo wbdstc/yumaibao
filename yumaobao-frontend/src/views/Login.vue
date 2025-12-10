@@ -132,7 +132,6 @@ export default {
             })
             .catch((error) => {
               // 错误处理已在API拦截器中处理
-              console.error('登录失败:', error)
             })
             .finally(() => {
               loading.value = false

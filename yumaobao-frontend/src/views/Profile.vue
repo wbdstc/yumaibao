@@ -176,7 +176,6 @@ export default {
         
         ElMessage.success('个人信息更新成功')
       } catch (error) {
-        console.error('更新个人信息失败:', error)
         ElMessage.error('更新个人信息失败，请稍后重试')
       } finally {
         saving.value = false
@@ -214,7 +213,6 @@ export default {
             // userStore.logout()
             // router.push('/login')
           } catch (error) {
-            console.error('修改密码失败:', error)
             ElMessage.error('修改密码失败，原密码错误或网络异常')
           } finally {
             changingPassword.value = false
@@ -262,7 +260,6 @@ export default {
         // 跳转到登录页
         router.push('/login')
       } catch (error) {
-        console.error('注销账号失败:', error)
         ElMessage.error(error.response?.data?.message || '注销账号失败，请重试')
       } finally {
         deletingAccount.value = false

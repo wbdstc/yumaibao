@@ -58,17 +58,9 @@ export const generateJWT = (userId: string, role: string): string => {
 export const verifyJWT = (token: string): jwt.JwtPayload | null => {
   try {
     const secret = process.env.JWT_SECRET || 'default_secret_key';
-    // 打印JWT验证信息
-    console.log('--- JWT验证开始 ---');
-    console.log('后端正在使用的密钥:', secret);
-    console.log('收到的Token:', token);
-    
     const decoded = jwt.verify(token, secret) as jwt.JwtPayload;
-    console.log('JWT验证成功！解码后的用户信息:', decoded);
     return decoded;
   } catch (error) {
-    console.error('JWT验证失败，具体原因:', error instanceof Error ? error.message : String(error));
-    console.error('错误详情:', error);
     return null;
   }
 };

@@ -8,6 +8,8 @@
           v-model="selectedProjectId"
           placeholder="选择项目"
           class="project-select"
+          :clearable="!isRestrictedUser"
+          :disabled="isRestrictedUser"
           @change="handleProjectChange"
         >
           <el-option
@@ -76,7 +78,7 @@
         <el-button
           type="success"
           size="small"
-          style="margin-top: 8px"
+          style="margin-top: 8px; display: block; width: 100%;"
           @click="uploadNewModel"
           icon="Upload"
         >
@@ -247,7 +249,7 @@
             action=""
             :auto-upload="false"
             :on-change="handleFileUpload"
-            accept=".dwg,.dxf"
+            accept=".dwg,.dxf,.ifc,.rvt,.nwd,.3ds,.obj,.stp,.step"
             :show-file-list="true"
           >
             <el-icon class="el-icon--upload" size="64">
@@ -257,7 +259,7 @@
               <p>拖放文件到此处，或 <em>点击选择文件</em></p>
             </div>
             <template #tip>
-              <div class="el-upload__tip">支持的格式: DWG, DXF</div>
+              <div class="el-upload__tip">支持的格式: DWG, DXF (CAD), IFC, RVT, NWD (BIM), 3DS, OBJ, STP, STEP (3D模型)</div>
             </template>
           </el-upload>
         </el-form-item>
@@ -295,11 +297,15 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Document, UploadFilled, Refresh, FullScreen, Grid,Upload, Collection, RefreshRight } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
+import { useUserStore } from '../stores/index.js'
+
+// 创建userStore实例
+const userStore = useUserStore()
 
 // 组件引用
 const cadViewerRef = ref(null)
@@ -340,6 +346,17 @@ const selectedEmbeddedPart = ref(null)
 
 // 可见的预埋件（根据当前楼层过滤）
 const visibleEmbeddedParts = ref([])
+
+// 判断用户是否是安装人员或质检人员
+const isRestrictedUser = computed(() => {
+  const role = userStore.userRole || ''
+  return role === 'installer' || role === 'qualityInspector'
+})
+
+// 获取用户可访问的项目ID
+const userProjects = computed(() => {
+  return userStore.userInfo?.projects || []
+})
 
 const updateVisibleEmbeddedParts = () => {
   visibleEmbeddedParts.value = embeddedParts.value.filter(ep => 
@@ -409,7 +426,21 @@ onMounted(() => {
 const getProjects = async () => {
   try {
     const response = await api.project.getProjects()
-    projects.value = response
+    
+    // 根据用户角色过滤项目列表
+    if (isRestrictedUser.value && userProjects.value.length > 0) {
+      // 安装人员和质检人员只能看到自己注册的项目
+      projects.value = response.filter(project => userProjects.value.includes(project.id))
+    } else {
+      // 其他角色可以看到所有项目
+      projects.value = response
+    }
+    
+    // 如果是受限用户，自动选择他们的项目
+    if (isRestrictedUser.value && projects.value.length > 0) {
+      selectedProjectId.value = projects.value[0].id
+      await handleProjectChange(selectedProjectId.value)
+    }
   } catch (error) {
     console.error('获取项目列表失败:', error)
     ElMessage.error('获取项目列表失败')
@@ -418,33 +449,42 @@ const getProjects = async () => {
 
 const getFloors = async (projectId) => {
   try {
-    const response = await api.floor.getFloors({ projectId })
+    const response = await api.floor.getFloors(projectId) // 直接传入projectId，不是对象
     floors.value = response
   } catch (error) {
     console.error('获取楼层列表失败:', error)
     ElMessage.error('获取楼层列表失败')
+    floors.value = [] // 发生错误时确保floors是数组
   }
 }
 
 const getModels = async (projectId) => {
   try {
-    const response = await api.bimModel.getBIMModels({ projectId })
+    const response = await api.bimModel.getBIMModels({ projectId }) // 正确，传入对象
     models.value = response
   } catch (error) {
     console.error('获取模型列表失败:', error)
     ElMessage.error('获取模型列表失败')
+    models.value = [] // 发生错误时确保models是数组
   }
 }
 
 const getEmbeddedParts = async (projectId, floorId = '') => {
   try {
+    if (!projectId) {
+      embeddedParts.value = []
+      return
+    }
     const params = { projectId }
     if (floorId) params.floorId = floorId
-    const response = await api.embeddedPart.getEmbeddedParts(params)
-    embeddedParts.value = response
+    const response = await api.embeddedPart.getEmbeddedParts(params) // 正确，传入对象
+    // 确保embeddedParts始终是数组
+    embeddedParts.value = Array.isArray(response) ? response : []
   } catch (error) {
     console.error('获取预埋件列表失败:', error)
     ElMessage.error('获取预埋件列表失败')
+    // 发生错误时也确保embeddedParts是数组
+    embeddedParts.value = []
   }
 }
 
@@ -510,7 +550,7 @@ const handleFileUpload = (uploadFile) => {
 }
 
 const isValidFile = (file) => {
-  const validExtensions = ['.dwg', '.dxf']
+  const validExtensions = ['.dwg', '.dxf', '.ifc', '.rvt', '.nwd', '.3ds', '.obj', '.stp', '.step']
   const fileName = file.name.toLowerCase()
   return validExtensions.some(ext => fileName.endsWith(ext))
 }
@@ -977,15 +1017,160 @@ const uploadNewModel = () => {
       "parts";
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr auto;
+    padding: 10px;
+    height: calc(100vh - 20px);
   }
   
   .control-panel {
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .control-section {
+    flex: 1 1 calc(50% - 5px);
+    margin-bottom: 10px;
+  }
+  
+  .floor-controls, .view-controls {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .model-container {
+    height: calc(100vh - 300px);
   }
   
   .embedded-parts-panel {
+    height: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .bim-visualization {
+    grid-template-rows: auto auto auto auto;
+    height: auto;
+    min-height: 100vh;
+    padding: 5px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+  }
+  
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+  }
+  
+  .project-select {
+    width: 100%;
+  }
+  
+  .control-panel {
+    flex-direction: column;
+    padding: 0 10px;
+  }
+  
+  .control-section {
+    flex: 1 1 100%;
+  }
+  
+  .model-container {
+    height: 350px;
+    margin: 0 5px;
+  }
+  
+  .view-switcher {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .sync-checkbox {
+    margin-left: 0 !important;
+  }
+  
+  .embedded-parts-panel {
+    height: 250px;
+    margin: 0 5px;
+  }
+  
+  .panel-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .search-input {
+    width: 100%;
+  }
+  
+  .embedded-part-item {
+    padding: 8px;
+  }
+  
+  .item-info {
+    font-size: 12px;
+  }
+}
+
+/* 小屏幕移动端适配 */
+@media (max-width: 480px) {
+  .bim-visualization {
+    padding: 0;
+  }
+  
+  .page-header {
+    padding: 5px;
+  }
+  
+  .control-panel {
+    padding: 5px;
+  }
+  
+  .control-section {
+    padding: 8px;
+  }
+  
+  .model-container {
     height: 300px;
+    margin: 0;
+  }
+  
+  .view-controls button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  
+  .control-section h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  
+  .embedded-parts-panel {
+    height: 200px;
+    margin: 0;
+  }
+  
+  .embedded-part-item {
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px;
+  }
+  
+  .item-info {
+    font-size: 11px;
+  }
+  
+  .page-header .el-button {
+    width: 100%;
   }
 }
 </style>

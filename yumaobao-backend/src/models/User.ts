@@ -11,6 +11,7 @@ export interface UserAttributes {
   role: 'admin' | 'projectManager' | 'projectEngineer' | 'qualityInspector' | 'installer';
   avatar?: string;
   phone: string;
+  projects: string[]; // 用户关联的项目ID数组
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +23,7 @@ export interface UserCreationAttributes {
   role: 'admin' | 'projectManager' | 'projectEngineer' | 'qualityInspector' | 'installer';
   avatar?: string;
   phone: string;
+  projects?: string[]; // 可选的项目ID数组，用于注册时分配项目
 }
 
 class UserModel {
@@ -44,6 +46,7 @@ class UserModel {
     const now = new Date();
     const user: UserAttributes = {
       id: uuidv4(),
+      projects: userData.projects || [], // 初始化项目数组
       ...userData,
       createdAt: now,
       updatedAt: now
@@ -78,7 +81,7 @@ class UserModel {
   }
 
   // 更新用户信息
-  async update(id: string, userData: Partial<UserCreationAttributes>): Promise<UserAttributes | null> {
+  async update(id: string, userData: Partial<Omit<UserAttributes, 'id' | 'createdAt' | 'updatedAt'>>): Promise<UserAttributes | null> {
     const updateData = { ...userData, updatedAt: new Date() };
     const result = await this.getCollection().findOneAndUpdate(
       { id },

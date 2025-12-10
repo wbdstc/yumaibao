@@ -62,6 +62,43 @@
             <el-option label="管理员" value="admin" />
           </el-select>
         </el-form-item>
+        <el-form-item prop="projects" v-if="registerForm.role !== 'admin'">
+          <el-select
+            v-model="registerForm.projects"
+            placeholder="选择项目"
+            class="w-full"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+          >
+            <el-option
+              v-for="project in projects"
+              :key="project.id"
+              :label="project.name"
+              :value="project.id"
+            />
+          </el-select>
+          <div class="el-form-item__help">* 安装人员和质检人员必须选择至少一个项目</div>
+        </el-form-item>
+        
+        <!-- 项目选择，仅对安装人员和质检人员显示 -->
+        <el-form-item v-if="showProjectSelect" prop="projects">
+          <el-select
+            v-model="registerForm.projects"
+            placeholder="选择项目"
+            multiple
+            collapse-tags
+            class="w-full"
+          >
+            <el-option
+              v-for="project in projects"
+              :key="project.id"
+              :label="project.name"
+              :value="project.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
@@ -83,7 +120,7 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/index'
@@ -97,13 +134,35 @@ export default {
     const registerFormRef = ref(null)
     const loading = ref(false)
     
-    const registerForm = ref({
+    const registerForm = reactive({
       name: '',
       phone: '',
       password: '',
       confirmPassword: '',
-      role: 'installer' // 默认角色为安装人员
+      role: 'installer', // 默认角色为安装人员
+      projects: [] // 项目选择字段
     })
+    
+    // 项目列表
+    const projects = ref([]);
+    // 是否显示项目选择
+    const showProjectSelect = ref(false);
+    
+    // 监听角色变化，控制是否显示项目选择
+    watch(() => registerForm.role, (newRole) => {
+      showProjectSelect.value = ['installer', 'qualityInspector'].includes(newRole);
+    });
+    
+    // 获取项目列表
+    onMounted(async () => {
+      try {
+        const response = await api.project.getProjects();
+        projects.value = response;
+      } catch (error) {
+        console.error('获取项目列表失败:', error);
+        ElMessage.error('获取项目列表失败');
+      }
+    });
     
     const registerRules = {
       name: [
@@ -120,9 +179,8 @@ export default {
       ],
       confirmPassword: [
         { required: true, message: '请确认密码', trigger: 'blur' },
-        {
-          validator: (rule, value, callback) => {
-            if (value !== registerForm.value.password) {
+        { validator: (rule, value, callback) => {
+            if (value !== registerForm.password) {
               callback(new Error('两次输入密码不一致'))
             } else {
               callback()
@@ -133,6 +191,21 @@ export default {
       ],
       role: [
         { required: true, message: '请选择角色', trigger: 'change' }
+      ],
+      projects: [
+        {
+          required: true,
+          message: '请选择至少一个项目',
+          trigger: 'change',
+          validator: (rule, value, callback) => {
+            // 只有安装人员和质检人员需要选择项目
+            if ((registerForm.role === 'installer' || registerForm.role === 'qualityInspector') && (!value || value.length === 0)) {
+              callback(new Error('请选择至少一个项目'))
+            } else {
+              callback()
+            }
+          }
+        }
       ]
     }
     
@@ -143,18 +216,28 @@ export default {
         if (valid) {
           loading.value = true
           
+          // 准备注册数据，移除后端不需要的字段
+          const registerData = {
+            name: registerForm.name,
+            phone: registerForm.phone,
+            password: registerForm.password,
+            role: registerForm.role,
+            projects: registerForm.projects
+          }
+          
           // 调用注册API
-          api.user.register(registerForm.value)
+          api.user.register(registerData)
             .then(response => {
               ElMessage.success('注册成功')
               // 注册成功后自动登录
               return api.user.login({
-                phone: registerForm.value.phone,
-                password: registerForm.value.password
+                phone: registerForm.phone,
+                password: registerForm.password
               })
             })
             .then(loginResponse => {
-              userStore.login(loginResponse.data.user, loginResponse.data.token)
+              // 响应拦截器已经返回了response.data，所以loginResponse直接包含user和token
+              userStore.login(loginResponse.user, loginResponse.token)
               // 跳转到首页
               router.push('/')
             })
@@ -180,7 +263,8 @@ export default {
       registerRules,
       loading,
       handleRegister,
-      goToLogin
+      goToLogin,
+      projects
     }
   }
 }
