@@ -181,9 +181,10 @@ export default {
         const response = await api.project.getProjects()
         
         // 根据用户角色过滤项目列表
-        if (isRestrictedUser.value && userProjects.value.length > 0) {
+        const userProjectList = userProjects.value || []
+        if (isRestrictedUser.value && userProjectList.length > 0) {
           // 安装人员和质检人员只能看到自己注册的项目
-          projects.value = response.filter(project => userProjects.value.includes(project.id))
+          projects.value = response.filter(project => userProjectList.includes(project.id))
         } else {
           // 其他角色可以看到所有项目
           projects.value = response

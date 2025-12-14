@@ -12,6 +12,7 @@ import SystemSettings from '../views/SystemSettings.vue'
 import UploadTest from '../views/UploadTest.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ProjectStatistics from '../views/ProjectStatistics.vue'
+import ModelManagement from '../views/ModelManagement.vue'
 
 const routes = [
   {
@@ -37,7 +38,18 @@ const routes = [
         component: ProjectManagement,
         meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }
       },
-      {        path: 'bim',        name: 'BIMVisualization',        component: BIMVisualization,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }      },
+      {
+        path: 'bim',
+        name: 'BIMVisualization',
+        component: BIMVisualization,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }
+      },
+      {
+        path: 'model-management',
+        name: 'ModelManagement',
+        component: ModelManagement,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }
+      },
       {        path: 'embedded-parts',        name: 'EmbeddedPartManagement',        component: EmbeddedPartManagement,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }      },
       {        path: 'scan',        name: 'QRCodeScan',        component: QRCodeScan,        meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'] }      },
       {

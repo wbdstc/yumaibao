@@ -412,8 +412,9 @@ export default {
       let result = [...projects.value]
 
       // 项目锁定：安装人员和质检人员只能看到自己所在的项目
-      if (isRestrictedUser.value && userProjects.value.length > 0) {
-        result = result.filter(project => userProjects.value.includes(project.id))
+      const userProjectList = userProjects.value || []
+      if (isRestrictedUser.value && userProjectList.length > 0) {
+        result = result.filter(project => userProjectList.includes(project.id))
       }
 
       // 搜索筛选

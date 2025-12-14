@@ -39,13 +39,23 @@
             <span>项目管理</span>
           </template>
         </el-menu-item>
-        <!-- BIM可视化菜单项 - 所有角色可见 -->
-        <el-menu-item index="/bim">
-          <el-icon><PictureFilled /></el-icon>
+        <!-- BIM可视化子菜单 -->
+        <el-sub-menu index="/bim">
           <template #title>
+            <el-icon><PictureFilled /></el-icon>
             <span>BIM可视化</span>
           </template>
-        </el-menu-item>
+          <!-- BIM可视化主页面 - 所有角色可见 -->
+          <el-menu-item index="/bim">
+            <el-icon><Monitor /></el-icon>
+            <span>模型查看</span>
+          </el-menu-item>
+          <!-- 模型管理页面 - 仅管理员、项目经理和工程师可见 -->
+          <el-menu-item index="/model-management" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
+            <el-icon><DocumentAdd /></el-icon>
+            <span>模型管理</span>
+          </el-menu-item>
+        </el-sub-menu>
         <!-- 预埋件管理菜单项 - 仅管理员、项目经理和工程师可见 -->
         <el-menu-item index="/embedded-parts" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
           <el-icon><Box /></el-icon>
@@ -282,31 +292,31 @@ export default {
   background-color: transparent;
 }
 
-:deep(.el-menu-item) {
-  color: rgba(255, 255, 255, 0.8) !important;
+.sidebar-menu :deep(.el-menu-item) {
+  color: rgba(255, 255, 255, 0.8);
   border-left: 3px solid transparent;
-  transition: all 0.3s ease !important;
-  padding: 12px 16px !important;
-  font-size: 14px !important;
+  transition: all 0.3s ease;
+  padding: 12px 16px;
+  font-size: 14px;
 }
 
-:deep(.el-menu-item:hover) {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
-  border-left-color: var(--safety-orange) !important;
+.sidebar-menu :deep(.el-menu-item:hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-left-color: var(--safety-orange);
 }
 
-:deep(.el-menu-item.is-active) {
-  background-color: rgba(255, 115, 22, 0.2) !important;
-  color: #fff !important;
-  border-left-color: var(--safety-orange) !important;
-  font-weight: 600 !important;
+.sidebar-menu :deep(.el-menu-item.is-active) {
+  background-color: rgba(255, 115, 22, 0.2);
+  color: #fff;
+  border-left-color: var(--safety-orange);
+  font-weight: 600;
 }
 
 /* 侧边栏图标样式 */
-:deep(.el-icon) {
-  font-size: 18px !important;
-  margin-right: 8px !important;
+.sidebar-menu :deep(.el-icon) {
+  font-size: 18px;
+  margin-right: 8px;
 }
 
 .sidebar-collapsed :deep(.el-icon) {

@@ -19,24 +19,12 @@
             :value="project.id"
           />
         </el-select>
-      </div>
-      <div class="header-right">
-        <el-button type="primary" @click="refreshViewer" icon="Refresh">
-          刷新模型
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 控制面板 -->
-    <el-card class="control-panel">
-      <!-- 楼层选择 -->
-      <div class="control-section">
-        <h3>楼层管理</h3>
         <el-select
           v-model="selectedFloorId"
           placeholder="选择楼层"
+          class="floor-select"
           filterable
-          style="width: 100%"
+          :disabled="!selectedProjectId"
           @change="handleFloorChange"
         >
           <el-option
@@ -48,58 +36,40 @@
         </el-select>
         <div class="floor-controls">
           <el-button type="primary" size="small" @click="showPreviousFloor" :disabled="!canNavigateFloors">
-          <el-icon><ArrowUp /></el-icon>
-          上一层
-        </el-button>
-        <el-button type="primary" size="small" @click="showNextFloor" :disabled="!canNavigateFloors">
-          <el-icon><ArrowDown /></el-icon>
-          下一层
-        </el-button>
+            <el-icon><ArrowUp /></el-icon>
+          </el-button>
+          <el-button type="primary" size="small" @click="showNextFloor" :disabled="!canNavigateFloors">
+            <el-icon><ArrowDown /></el-icon>
+          </el-button>
         </div>
       </div>
-
-      <!-- 模型管理 -->
-      <div class="control-section">
-        <h3>模型管理</h3>
-        <el-select
-          v-model="selectedModelId"
-          placeholder="选择模型"
-          filterable
-          style="width: 100%"
-          @change="handleModelChange"
-        >
-          <el-option
-            v-for="model in models"
-            :key="model.id"
-            :label="model.name"
-            :value="model.id"
-          />
-        </el-select>
-        <el-button
-          type="success"
-          size="small"
-          style="margin-top: 8px; display: block; width: 100%;"
-          @click="uploadNewModel"
-          icon="Upload"
-        >
-          上传模型
+      <div class="header-right">
+        <el-button type="primary" @click="refreshViewer" icon="Refresh">
+          刷新模型
         </el-button>
       </div>
+    </div>
 
-      <!-- 状态筛选 -->
-      <div class="control-section">
-        <h3>状态筛选</h3>
-        <el-checkbox-group v-model="selectedStatuses" @change="handleStatusFilterChange">
-          <el-checkbox label="pending" border>待安装</el-checkbox>
-          <el-checkbox label="installed" border>已安装</el-checkbox>
-          <el-checkbox label="inspected" border>已验收</el-checkbox>
-          <el-checkbox label="completed" border>已完成</el-checkbox>
-        </el-checkbox-group>
-      </div>
+    <!-- 控制面板 -->
+    <el-card class="control-panel">
 
-      <!-- 操作按钮 -->
-      <div class="control-section">
-        <h3>视图操作</h3>
+
+
+
+    </el-card>
+
+    <!-- 模型显示区域 -->
+    <div class="model-container">
+      <!-- 模型视图切换和操作 -->
+      <div class="view-switcher">
+        <el-radio-group v-model="currentView" size="small">
+          <el-radio-button label="2d">2D CAD视图</el-radio-button>
+          <el-radio-button label="3d">3D BIM视图</el-radio-button>
+          <el-radio-button label="both">双视图</el-radio-button>
+        </el-radio-group>
+        <el-checkbox v-model="enableCoordinateSync" size="small" class="sync-checkbox">
+          <el-icon><RefreshRight /></el-icon>坐标同步
+        </el-checkbox>
         <div class="view-controls">
           <el-button type="primary" size="small" @click="zoomToExtent" icon="FullScreen">
             全屏显示
@@ -111,21 +81,6 @@
             图层管理
           </el-button>
         </div>
-      </div>
-    </el-card>
-
-    <!-- 模型显示区域 -->
-    <div class="model-container">
-      <!-- 模型视图切换 -->
-      <div class="view-switcher">
-        <el-radio-group v-model="currentView" size="small">
-          <el-radio-button label="2d">2D CAD视图</el-radio-button>
-          <el-radio-button label="3d">3D BIM视图</el-radio-button>
-          <el-radio-button label="both">双视图</el-radio-button>
-        </el-radio-group>
-        <el-checkbox v-model="enableCoordinateSync" size="small" class="sync-checkbox">
-          <el-icon><RefreshRight /></el-icon>坐标同步
-        </el-checkbox>
       </div>
 
       <!-- CAD查看器（2D视图） -->
@@ -175,6 +130,15 @@
           class="search-input"
         />
       </div>
+      <!-- 状态筛选 -->
+      <div class="status-filter">
+        <el-checkbox-group v-model="selectedStatuses" @change="handleStatusFilterChange" size="small">
+          <el-checkbox label="pending" border>待安装</el-checkbox>
+          <el-checkbox label="installed" border>已安装</el-checkbox>
+          <el-checkbox label="inspected" border>已验收</el-checkbox>
+          <el-checkbox label="completed" border>已完成</el-checkbox>
+        </el-checkbox-group>
+      </div>
       <div class="embedded-parts-list">
         <div
           v-for="embeddedPart in filteredEmbeddedParts"
@@ -212,65 +176,7 @@
       </div>
     </div>
 
-    <!-- 模型上传对话框 -->
-    <el-dialog
-      v-model="uploadDialogVisible"
-      title="上传BIM模型"
-      width="50%"
-    >
-      <el-form :model="uploadForm" label-width="80px">
-        <el-form-item label="项目">
-          <el-select v-model="uploadForm.projectId" placeholder="选择项目" :disabled="true">
-            <el-option
-              v-for="project in projects"
-              :key="project.id"
-              :label="project.name"
-              :value="project.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="楼层">
-          <el-select v-model="uploadForm.floorId" placeholder="选择楼层">
-            <el-option
-              v-for="floor in floors"
-              :key="floor.id"
-              :label="floor.name"
-              :value="floor.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模型名称">
-          <el-input v-model="uploadForm.name" placeholder="请输入模型名称" />
-        </el-form-item>
-        <el-form-item label="模型文件">
-          <el-upload
-            class="upload-demo"
-            drag
-            action=""
-            :auto-upload="false"
-            :on-change="handleFileUpload"
-            accept=".dwg,.dxf,.ifc,.rvt,.nwd,.3ds,.obj,.stp,.step"
-            :show-file-list="true"
-          >
-            <el-icon class="el-icon--upload" size="64">
-              <UploadFilled />
-            </el-icon>
-            <div class="el-upload__text">
-              <p>拖放文件到此处，或 <em>点击选择文件</em></p>
-            </div>
-            <template #tip>
-              <div class="el-upload__tip">支持的格式: DWG, DXF (CAD), IFC, RVT, NWD (BIM), 3DS, OBJ, STP, STEP (3D模型)</div>
-            </template>
-          </el-upload>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="uploadDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitUpload">上传</el-button>
-        </span>
-      </template>
-    </el-dialog>
+
 
     <!-- 图层管理对话框 -->
     <el-dialog
@@ -298,7 +204,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid,Upload, Collection, RefreshRight } from '@element-plus/icons-vue'
+import { Document, UploadFilled, Refresh, FullScreen, Grid,Upload, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
@@ -364,22 +270,19 @@ const updateVisibleEmbeddedParts = () => {
   )
 }
 
+// 添加计算属性
+const canUploadModel = computed(() => {
+  const role = userStore.userRole || ''
+  return ['admin', 'projectManager', 'projectEngineer'].includes(role)
+})
+
 // 监听楼层变化，更新可见预埋件
 watch(selectedFloorId, () => {
   updateVisibleEmbeddedParts()
 })
 
 // 对话框
-const uploadDialogVisible = ref(false)
 const layersDialogVisible = ref(false)
-
-// 上传表单
-const uploadForm = reactive({
-  projectId: '',
-  floorId: '',
-  name: '',
-  file: null
-})
 
 // 计算属性
 const filteredEmbeddedParts = computed(() => {
@@ -428,9 +331,10 @@ const getProjects = async () => {
     const response = await api.project.getProjects()
     
     // 根据用户角色过滤项目列表
-    if (isRestrictedUser.value && userProjects.value.length > 0) {
+    const userProjectList = userProjects.value || []
+    if (isRestrictedUser.value && userProjectList.length > 0) {
       // 安装人员和质检人员只能看到自己注册的项目
-      projects.value = response.filter(project => userProjects.value.includes(project.id))
+      projects.value = response.filter(project => userProjectList.includes(project.id))
     } else {
       // 其他角色可以看到所有项目
       projects.value = response
@@ -541,49 +445,6 @@ const handleModelChange = async (modelId) => {
 
 const handleStatusFilterChange = () => {
   // 筛选状态变化时自动更新列表
-}
-
-const handleFileUpload = (uploadFile) => {
-  if (uploadFile.raw && isValidFile(uploadFile.raw)) {
-    uploadForm.file = uploadFile.raw
-  }
-}
-
-const isValidFile = (file) => {
-  const validExtensions = ['.dwg', '.dxf', '.ifc', '.rvt', '.nwd', '.3ds', '.obj', '.stp', '.step']
-  const fileName = file.name.toLowerCase()
-  return validExtensions.some(ext => fileName.endsWith(ext))
-}
-
-const submitUpload = async () => {
-  try {
-    if (!uploadForm.projectId || !uploadForm.floorId || !uploadForm.name || !uploadForm.file) {
-      ElMessage.error('请填写完整信息')
-      return
-    }
-
-    const formData = new FormData()
-    formData.append('projectId', uploadForm.projectId)
-    formData.append('floorId', uploadForm.floorId)
-    formData.append('name', uploadForm.name)
-    formData.append('file', uploadForm.file)
-
-    await api.bimModel.uploadBIMModel(formData)
-    ElMessage.success('上传成功')
-    uploadDialogVisible.value = false
-    
-    // 重置表单
-    uploadForm.projectId = ''
-    uploadForm.floorId = ''
-    uploadForm.name = ''
-    uploadForm.file = null
-    
-    // 更新模型列表
-    await getModels(selectedProjectId.value)
-  } catch (error) {
-    console.error('上传失败:', error)
-    ElMessage.error('上传失败')
-  }
 }
 
 // 查看器相关方法
@@ -756,16 +617,7 @@ const highlightInBimViewer = (embeddedPart) => {
   // 例如，在Three.js中可以通过修改材质颜色或添加发光效果来实现高亮
 }
 
-const uploadNewModel = () => {
-  if (!selectedProjectId.value) {
-    ElMessage.error('请先选择项目')
-    return
-  }
-  
-  uploadForm.projectId = selectedProjectId.value
-  uploadForm.floorId = selectedFloorId.value || ''
-  uploadDialogVisible.value = true
-}
+
 </script>
 
 <style scoped>
@@ -773,11 +625,10 @@ const uploadNewModel = () => {
   padding: 20px;
   display: grid;
   grid-template-areas:
-    "header header"
-    "control model"
-    "parts model";
-  grid-template-columns: 300px 1fr;
-  grid-template-rows: auto auto 1fr;
+    "header header header"
+    "control model parts";
+  grid-template-columns: 320px 1fr 320px;
+  grid-template-rows: auto 1fr;
   gap: 20px;
   height: calc(100vh - 40px);
 }
@@ -805,16 +656,31 @@ const uploadNewModel = () => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
 .control-section {
   margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.control-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .control-section h3 {
   margin-bottom: 10px;
   font-size: 16px;
   font-weight: bold;
+  color: #1E3A5F;
 }
 
 .floor-controls,
@@ -833,6 +699,7 @@ const uploadNewModel = () => {
   height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
+  border: 1px solid #ebeef5;
 }
 
 .view-switcher {
@@ -842,6 +709,17 @@ const uploadNewModel = () => {
   padding: 10px 15px;
   background-color: #fff;
   border-bottom: 1px solid #ebeef5;
+}
+
+/* 添加上传提示样式 */
+.upload-hint {
+  margin-top: 8px;
+  text-align: center;
+  padding: 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #606266;
 }
 
 .sync-checkbox {
@@ -874,7 +752,7 @@ const uploadNewModel = () => {
   border-radius: 4px;
   overflow: hidden;
   position: relative;
-  background-color: #000;
+  background-color: #f5f7fa;
 }
 
 .bim-viewer-container {
@@ -916,7 +794,7 @@ const uploadNewModel = () => {
   grid-area: parts;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 300px);
+  max-height: calc(100vh - 120px);
   background-color: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
@@ -1008,64 +886,150 @@ const uploadNewModel = () => {
   border-bottom: 1px solid #ebeef5;
 }
 
-@media (max-width: 1200px) {
-  .bim-visualization {
+/* ========== 响应式修复开始 ========== */
+
+/* 平板设备适配 (1024px以下) */
+@media (max-width: 1024px) {
+  #bim-visualization-container {
+    grid-template-areas: 
+      "header header"
+      "control model"
+      "parts model";
+    grid-template-columns: 300px 1fr;
+    grid-template-rows: auto 1fr 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  .control-panel {
+    padding: 16px;
+  }
+  
+  .control-section h3 {
+    font-size: 15px;
+  }
+  
+  .embedded-parts-panel {
+    max-height: calc(50vh - 100px);
+  }
+}
+
+/* 移动端适配 (768px及以下) - 修复这里的关键问题 */
+@media (max-width: 768px) {
+  #bim-visualization-container {
+    /* 改为单列布局，确保所有内容都可见 */
     grid-template-areas:
       "header"
       "control"
       "model"
       "parts";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
-    padding: 10px;
-    height: calc(100vh - 20px);
-  }
-  
-  .control-panel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 10px;
-  }
-  
-  .control-section {
-    flex: 1 1 calc(50% - 5px);
-    margin-bottom: 10px;
-  }
-  
-  .floor-controls, .view-controls {
-    flex-direction: column;
-    gap: 5px;
-  }
-  
-  .model-container {
-    height: calc(100vh - 300px);
-  }
-  
-  .embedded-parts-panel {
-    height: 250px;
-  }
-}
-
-@media (max-width: 768px) {
-  .bim-visualization {
     grid-template-rows: auto auto auto auto;
-    height: auto;
+    gap: 16px;
+    padding: 16px;
+    height: auto; /* 改为自动高度，支持滚动 */
     min-height: 100vh;
-    padding: 5px;
+    overflow-y: auto; /* 允许垂直滚动 */
+  }
+  
+  /* 修复控制面板 - 保持为列布局 */
+  .control-panel {
+    display: flex;
+    flex-direction: column; /* 确保垂直排列 */
+    padding: 16px;
+    gap: 20px;
+    flex-wrap: nowrap; /* 禁止换行 */
+  }
+  
+  /* 修复控制区块 - 每个占满宽度 */
+  .control-section {
+    width: 100%;
+    margin-bottom: 20px;
+    flex: 0 0 auto !important; /* 取消flex增长和收缩 */
+    padding: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+    min-height: 120px; /* 确保最小高度 */
+  }
+  
+  .control-section:last-child {
+    margin-bottom: 0;
+  }
+  
+  .control-section h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    color: #1E3A5F;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #f0f2f5;
+  }
+  
+  /* 按钮组适配 */
+  .floor-controls,
+  .view-controls {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  
+  .floor-controls button,
+  .view-controls button {
+    flex: 1;
+    min-width: 0; /* 允许按钮缩小 */
+    white-space: nowrap;
+  }
+  
+  /* 模型容器 */
+  .model-container {
+    height: 500px; /* 固定高度，确保足够显示 */
+    min-height: 500px;
+    margin: 0;
+  }
+  
+  /* 视图切换器 */
+  .view-switcher {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+  }
+  
+  .sync-checkbox {
+    margin-left: 0;
+    margin-top: 0;
+  }
+  
+  /* 预埋件面板 */
+  .embedded-parts-panel {
+    height: 400px; /* 固定高度 */
+    min-height: 400px;
+    margin: 0;
+  }
+  
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+  }
+  
+  .search-input {
+    width: 100%;
   }
   
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
-    padding: 0 10px;
+    gap: 12px;
+    padding: 0;
   }
   
   .header-left {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
   }
   
@@ -1073,103 +1037,127 @@ const uploadNewModel = () => {
     width: 100%;
   }
   
-  .control-panel {
-    flex-direction: column;
-    padding: 0 10px;
+  .header-right {
+    align-self: stretch;
   }
   
-  .control-section {
-    flex: 1 1 100%;
-  }
-  
-  .model-container {
-    height: 350px;
-    margin: 0 5px;
-  }
-  
-  .view-switcher {
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
-  }
-  
-  .sync-checkbox {
-    margin-left: 0 !important;
-  }
-  
-  .embedded-parts-panel {
-    height: 250px;
-    margin: 0 5px;
-  }
-  
-  .panel-header {
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
-  }
-  
-  .search-input {
+  .header-right .el-button {
     width: 100%;
   }
   
   .embedded-part-item {
-    padding: 8px;
+    padding: 12px;
   }
   
   .item-info {
-    font-size: 12px;
+    font-size: 13px;
   }
 }
 
-/* 小屏幕移动端适配 */
+/* 小屏幕移动端 (480px及以下) */
 @media (max-width: 480px) {
   .bim-visualization {
-    padding: 0;
-  }
-  
-  .page-header {
-    padding: 5px;
+    padding: 12px;
+    gap: 12px;
   }
   
   .control-panel {
-    padding: 5px;
-  }
-  
-  .control-section {
-    padding: 8px;
-  }
-  
-  .model-container {
-    height: 300px;
-    margin: 0;
-  }
-  
-  .view-controls button {
-    font-size: 12px;
-    padding: 6px 10px;
+    padding: 12px;
+    gap: 16px;
   }
   
   .control-section h3 {
-    font-size: 14px;
+    font-size: 15px;
+  }
+  
+  /* 状态筛选的复选框调整为垂直排列 */
+  .el-checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .el-checkbox {
+    margin-right: 0 !important;
+  }
+  
+  /* 模型容器调整 */
+  .model-container {
+    height: 400px;
+    min-height: 400px;
+  }
+  
+  /* 预埋件面板调整 */
+  .embedded-parts-panel {
+    height: 350px;
+    min-height: 350px;
+  }
+  
+  /* 嵌入式部件项优化 */
+  .embedded-part-item {
+    padding: 10px;
     margin-bottom: 8px;
   }
   
-  .embedded-parts-panel {
-    height: 200px;
-    margin: 0;
-  }
-  
-  .embedded-part-item {
+  .item-header {
     flex-direction: column;
-    gap: 5px;
-    padding: 8px;
+    align-items: flex-start;
+    gap: 8px;
   }
   
   .item-info {
-    font-size: 11px;
+    font-size: 12px;
   }
   
-  .page-header .el-button {
+  /* 视图切换按钮调整为垂直 */
+  .el-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .el-radio-button {
+    width: 100%;
+  }
+  
+  .view-switcher {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .page-header {
+    padding: 0;
+  }
+  
+  .control-section {
+    padding: 0;
+  }
+  
+  .view-controls button {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+}
+
+/* 超小屏幕 (375px及以下) */
+@media (max-width: 375px) {
+  .model-container {
+    height: 350px;
+    min-height: 350px;
+  }
+  
+  .embedded-parts-panel {
+    height: 300px;
+    min-height: 300px;
+  }
+  
+  .floor-controls,
+  .view-controls {
+    flex-direction: column;
+  }
+  
+  .floor-controls button,
+  .view-controls button {
     width: 100%;
   }
 }
