@@ -224,7 +224,7 @@ onMounted(async () => {
 async function loadProjects() {
   try {
     const response = await getProjects()
-    projects.value = response.data
+    projects.value = response
     if (projects.value.length > 0) {
       selectedProjectId.value = projects.value[0].id
       await loadModels()
@@ -237,14 +237,9 @@ async function loadProjects() {
 
 async function loadFloors(projectId) {
   try {
-    // 实际项目中应该调用获取楼层的API
-    // 这里使用模拟数据
-    floors.value = [
-      { id: 1, name: '一层', projectId },
-      { id: 2, name: '二层', projectId },
-      { id: 3, name: '三层', projectId },
-      { id: 4, name: '四层', projectId }
-    ]
+    // 调用实际API获取楼层数据
+    const response = await api.floor.getFloors(projectId)
+    floors.value = response
   } catch (error) {
     ElMessage.error('加载楼层失败: ' + error.message)
   }
@@ -252,8 +247,8 @@ async function loadFloors(projectId) {
 
 async function loadModels() {
   try {
-    const response = await getModels(selectedProjectId.value)
-    models.value = response.data
+    const response = await getModels({ projectId: selectedProjectId.value })
+    models.value = response
   } catch (error) {
     ElMessage.error('加载模型失败: ' + error.message)
   }
@@ -331,7 +326,7 @@ async function submitEdit() {
   }
 
   try {
-    await updateModel(editForm.value)
+    await updateModel(editForm.value.id, editForm.value)
     ElMessage.success('模型更新成功')
     editDialogVisible.value = false
     loadModels()

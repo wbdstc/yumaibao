@@ -24,7 +24,8 @@ class ModelModel {
             id: (0, uuid_1.v4)(),
             ...modelData,
             version: modelData.version || '1.0',
-            uploadedAt: now
+            uploadedAt: now,
+            status: modelData.status || 'active'
         };
         const result = await this.getCollection().insertOne(model);
         return { ...model, _id: result.insertedId };

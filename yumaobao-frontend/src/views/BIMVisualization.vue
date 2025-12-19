@@ -3,7 +3,7 @@
     <!-- 页面顶部 -->
     <div class="page-header">
       <div class="header-left">
-        <h2>BIM模型可视化</h2>
+        <h2>BIM</h2>
         <el-select
           v-model="selectedProjectId"
           placeholder="选择项目"
@@ -50,13 +50,7 @@
       </div>
     </div>
 
-    <!-- 控制面板 -->
-    <el-card class="control-panel">
-
-
-
-
-    </el-card>
+    
 
     <!-- 模型显示区域 -->
     <div class="model-container">
@@ -625,9 +619,9 @@ const highlightInBimViewer = (embeddedPart) => {
   padding: 20px;
   display: grid;
   grid-template-areas:
-    "header header header"
-    "control model parts";
-  grid-template-columns: 320px 1fr 320px;
+    "header header"
+    "model parts";
+  grid-template-columns: 1fr 320px;
   grid-template-rows: auto 1fr;
   gap: 20px;
   height: calc(100vh - 40px);
@@ -890,79 +884,36 @@ const highlightInBimViewer = (embeddedPart) => {
 
 /* 平板设备适配 (1024px以下) */
 @media (max-width: 1024px) {
-  #bim-visualization-container {
+  .bim-visualization {
     grid-template-areas: 
       "header header"
-      "control model"
-      "parts model";
-    grid-template-columns: 300px 1fr;
-    grid-template-rows: auto 1fr 1fr;
+      "model parts";
+    grid-template-columns: 1fr 300px;
+    grid-template-rows: auto 1fr;
     padding: 16px;
     gap: 16px;
   }
   
-  .control-panel {
-    padding: 16px;
-  }
-  
-  .control-section h3 {
-    font-size: 15px;
-  }
-  
   .embedded-parts-panel {
-    max-height: calc(50vh - 100px);
+    max-height: calc(100vh - 200px);
   }
 }
 
 /* 移动端适配 (768px及以下) - 修复这里的关键问题 */
 @media (max-width: 768px) {
-  #bim-visualization-container {
+  .bim-visualization {
     /* 改为单列布局，确保所有内容都可见 */
     grid-template-areas:
       "header"
-      "control"
       "model"
       "parts";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto auto auto;
     gap: 16px;
     padding: 16px;
     height: auto; /* 改为自动高度，支持滚动 */
     min-height: 100vh;
     overflow-y: auto; /* 允许垂直滚动 */
-  }
-  
-  /* 修复控制面板 - 保持为列布局 */
-  .control-panel {
-    display: flex;
-    flex-direction: column; /* 确保垂直排列 */
-    padding: 16px;
-    gap: 20px;
-    flex-wrap: nowrap; /* 禁止换行 */
-  }
-  
-  /* 修复控制区块 - 每个占满宽度 */
-  .control-section {
-    width: 100%;
-    margin-bottom: 20px;
-    flex: 0 0 auto !important; /* 取消flex增长和收缩 */
-    padding: 0;
-    background: none;
-    border: none;
-    box-shadow: none;
-    min-height: 120px; /* 确保最小高度 */
-  }
-  
-  .control-section:last-child {
-    margin-bottom: 0;
-  }
-  
-  .control-section h3 {
-    font-size: 16px;
-    margin-bottom: 12px;
-    color: #1E3A5F;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #f0f2f5;
   }
   
   /* 按钮组适配 */
@@ -1061,15 +1012,6 @@ const highlightInBimViewer = (embeddedPart) => {
     gap: 12px;
   }
   
-  .control-panel {
-    padding: 12px;
-    gap: 16px;
-  }
-  
-  .control-section h3 {
-    font-size: 15px;
-  }
-  
   /* 状态筛选的复选框调整为垂直排列 */
   .el-checkbox-group {
     display: flex;
@@ -1129,10 +1071,6 @@ const highlightInBimViewer = (embeddedPart) => {
     padding: 0;
   }
   
-  .control-section {
-    padding: 0;
-  }
-  
   .view-controls button {
     font-size: 13px;
     padding: 8px 12px;
@@ -1160,5 +1098,7 @@ const highlightInBimViewer = (embeddedPart) => {
   .view-controls button {
     width: 100%;
   }
+  
 }
+
 </style>

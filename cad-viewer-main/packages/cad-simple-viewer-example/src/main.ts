@@ -1,4 +1,4 @@
-import { AcApDocManager, registerWorkers } from '@mlightcad/cad-simple-viewer'
+import { AcApDocManager } from '@mlightcad/cad-simple-viewer'
 import { AcDbOpenDatabaseOptions } from '@mlightcad/data-model'
 
 class CadViewerApp {
@@ -12,7 +12,6 @@ class CadViewerApp {
       'fileInputElement'
     ) as HTMLInputElement
 
-    registerWorkers()
     this.initializeViewer()
     this.setupFileHandling()
   }

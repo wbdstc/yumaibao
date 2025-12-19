@@ -7,6 +7,8 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const mongodb_1 = require("../config/mongodb");
 const Model_1 = __importDefault(require("../models/Model"));
+const Project_1 = __importDefault(require("../models/Project"));
+const Floor_1 = __importDefault(require("../models/Floor"));
 const fileUploadService_1 = require("../utils/fileUploadService");
 const minio_1 = require("../config/minio");
 // 模型轻量化处理工具的导入已移除，因为现在使用MinIO存储
@@ -20,8 +22,27 @@ class ModelController {
                 whereClause.projectId = projectId;
             if (floorId)
                 whereClause.floorId = floorId;
+            // 1. 获取所有模型数据
             const models = await Model_1.default.findAll(whereClause);
-            return res.status(200).json(models);
+            // 2. 提取所有不重复的projectId和floorId
+            const projectIds = [...new Set(models.map(model => model.projectId))];
+            const floorIds = [...new Set(models.map(model => model.floorId).filter(id => id))];
+            // 3. 批量查询项目和楼层信息
+            const projects = await Project_1.default.findAll({ id: { $in: projectIds } });
+            const floors = await Floor_1.default.findAll({ id: { $in: floorIds } });
+            // 4. 创建ID到名称的映射
+            const projectMap = new Map(projects.map(project => [project.id, project.name]));
+            const floorMap = new Map(floors.map(floor => [floor.id, floor.name]));
+            // 5. 处理模型数据，替换ID为名称
+            const processedModels = models.map(model => ({
+                ...model,
+                projectName: projectMap.get(model.projectId) || model.projectId, // 使用实际项目名称，fallback到ID
+                floorName: model.floorId ? (floorMap.get(model.floorId) || model.floorId) : '无', // 使用实际楼层名称，fallback到ID或'无'
+                fileType: model.format, // 使用format作为fileType
+                uploadTime: model.uploadedAt, // 使用uploadedAt作为uploadTime
+                status: model.status || 'active' // 确保status字段存在，默认为active
+            }));
+            return res.status(200).json(processedModels);
         }
         catch (error) {
             console.error('获取模型列表失败:', error);
@@ -47,7 +68,7 @@ class ModelController {
     static async uploadModel(req, res) {
         try {
             const { projectId, floorId, name, type, description, version } = req.body;
-            const userId = req.user?.userId;
+            const userId = req.user?.id;
             const file = req.file;
             if (!userId) {
                 return res.status(401).json({ message: '未授权' });

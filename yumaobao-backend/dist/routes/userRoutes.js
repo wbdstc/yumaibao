@@ -45,10 +45,11 @@ router.post('/register', UserController_1.default.register);
 router.post('/login', UserController_1.default.login);
 // 需要认证的路由
 router.get('/me', auth_1.default, UserController_1.default.getCurrentUser);
-// 需要管理员权限的路由
-router.get('/', auth_1.default, (0, auth_1.authorize)('admin'), UserController_1.default.getAllUsers);
-router.get('/:id', auth_1.default, (0, auth_1.authorize)('admin'), UserController_1.default.getUserById);
-router.put('/:id', auth_1.default, (0, auth_1.authorize)('admin'), UserController_1.default.updateUser);
+// 需要管理员、项目工程师或项目管理员权限的路由
+router.get('/', auth_1.default, (0, auth_1.authorize)('admin', 'projectManager', 'projectEngineer'), UserController_1.default.getAllUsers);
+router.get('/:id', auth_1.default, (0, auth_1.authorize)('admin', 'projectManager', 'projectEngineer'), UserController_1.default.getUserById);
+router.post('/', auth_1.default, (0, auth_1.authorize)('admin', 'projectManager', 'projectEngineer'), UserController_1.default.register);
+router.put('/:id', auth_1.default, (0, auth_1.authorize)('admin', 'projectManager', 'projectEngineer'), UserController_1.default.updateUser);
 router.delete('/:id', auth_1.default, (0, auth_1.authorize)('admin'), UserController_1.default.deleteUser);
 // 个人信息管理路由
 router.put('/me', auth_1.default, UserController_1.default.updateProfile);

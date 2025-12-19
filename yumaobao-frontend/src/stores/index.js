@@ -40,7 +40,8 @@ export const useUserStore = defineStore('user', {
       this.userInfo = { ...this.userInfo, ...info }
       localStorage.setItem('user', JSON.stringify(this.userInfo))
     }
-  }
+  },
+
 })
 
 

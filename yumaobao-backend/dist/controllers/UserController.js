@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const User_1 = __importDefault(require("../models/User"));
+const Project_1 = __importDefault(require("../models/Project"));
 const auth_1 = require("../utils/auth");
 class UserController {
     // 用户注册
@@ -27,8 +28,19 @@ class UserController {
                 email,
                 phone,
                 password: hashedPassword,
-                role
+                role,
+                projects: req.body.projects || [] // 添加项目关联
             });
+            // 如果有分配项目，同时更新项目的用户列表
+            if (req.body.projects && req.body.projects.length > 0) {
+                for (const projectId of req.body.projects) {
+                    const project = await Project_1.default.findById(projectId);
+                    if (project && !project.users.includes(newUser.id)) {
+                        project.users.push(newUser.id);
+                        await Project_1.default.update(projectId, { users: project.users });
+                    }
+                }
+            }
             // 生成JWT令牌
             const token = (0, auth_1.generateJWT)(String(newUser.id), newUser.role);
             // 返回用户信息和令牌
@@ -40,7 +52,8 @@ class UserController {
                     email: newUser.email,
                     role: newUser.role,
                     phone: newUser.phone,
-                    avatar: newUser.avatar
+                    avatar: newUser.avatar,
+                    projects: newUser.projects
                 },
                 token
             });
@@ -80,7 +93,8 @@ class UserController {
                     email: user.email,
                     role: user.role,
                     phone: user.phone,
-                    avatar: user.avatar
+                    avatar: user.avatar,
+                    projects: user.projects
                 },
                 token
             });
@@ -93,7 +107,7 @@ class UserController {
     // 获取当前用户信息
     static async getCurrentUser(req, res) {
         try {
-            const userId = req.user?.userId;
+            const userId = req.user?.id;
             // 查找用户
             const user = await User_1.default.findById(userId);
             if (!user) {
@@ -152,7 +166,7 @@ class UserController {
     static async updateUser(req, res) {
         try {
             const { id } = req.params;
-            const { name, email, role, phone, avatar } = req.body;
+            const { name, email, role, phone, avatar, projects } = req.body;
             // 检查用户是否存在
             const existingUser = await User_1.default.findById(id);
             if (!existingUser) {
@@ -173,6 +187,32 @@ class UserController {
                 phone: phone || existingUser.phone,
                 avatar: avatar || existingUser.avatar
             };
+            // 处理项目关联更新
+            if (projects !== undefined) {
+                updateData.projects = projects;
+                // 获取用户当前关联的项目
+                const currentProjects = existingUser.projects || [];
+                // 找出需要添加的项目（新的项目不在当前项目列表中）
+                const projectsToAdd = projects.filter((p) => !currentProjects.includes(p));
+                // 找出需要移除的项目（当前项目不在新项目列表中）
+                const projectsToRemove = currentProjects.filter((p) => !projects.includes(p));
+                // 更新需要添加的项目的用户列表
+                for (const projectId of projectsToAdd) {
+                    const project = await Project_1.default.findById(projectId);
+                    if (project && !project.users.includes(id)) {
+                        project.users.push(id);
+                        await Project_1.default.update(projectId, { users: project.users });
+                    }
+                }
+                // 更新需要移除的项目的用户列表
+                for (const projectId of projectsToRemove) {
+                    const project = await Project_1.default.findById(projectId);
+                    if (project) {
+                        project.users = project.users.filter((userId) => userId !== id);
+                        await Project_1.default.update(projectId, { users: project.users });
+                    }
+                }
+            }
             const updatedUser = await User_1.default.update(id, updateData);
             if (!updatedUser) {
                 return res.status(500).json({ message: '更新用户信息失败' });
@@ -212,7 +252,7 @@ class UserController {
     // 更新个人信息
     static async updateProfile(req, res) {
         try {
-            const userId = req.user?.userId;
+            const userId = req.user?.id;
             const { name, phone, avatar } = req.body;
             // 检查用户是否存在
             const existingUser = await User_1.default.findById(userId);
@@ -244,7 +284,7 @@ class UserController {
     // 删除个人账号
     static async deleteProfile(req, res) {
         try {
-            const userId = req.user?.userId;
+            const userId = req.user?.id;
             // 检查用户是否存在
             const existingUser = await User_1.default.findById(userId);
             if (!existingUser) {

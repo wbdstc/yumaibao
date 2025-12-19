@@ -289,7 +289,7 @@ export default {
 .sidebar-menu {
   flex: 1;
   border-right: none;
-  background-color: transparent;
+  background-color: #1e3a5f;
 }
 
 .sidebar-menu :deep(.el-menu-item) {
@@ -300,6 +300,33 @@ export default {
   font-size: 14px;
 }
 
+.sidebar-menu :deep(.el-sub-menu__title) {
+  color: #ffffff;
+  transition: all 0.3s ease;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.sidebar-menu :deep(.el-sub-menu__title:hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu) {
+  background-color: #1b3c92;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: #1b3c92;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-left-color: var(--safety-orange);
+}
+
 .sidebar-menu :deep(.el-menu-item:hover) {
   background-color: rgba(255, 255, 255, 0.1);
   color: #fff;
@@ -307,6 +334,13 @@ export default {
 }
 
 .sidebar-menu :deep(.el-menu-item.is-active) {
+  background-color: rgba(255, 115, 22, 0.2);
+  color: #fff;
+  border-left-color: var(--safety-orange);
+  font-weight: 600;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item.is-active) {
   background-color: rgba(255, 115, 22, 0.2);
   color: #fff;
   border-left-color: var(--safety-orange);

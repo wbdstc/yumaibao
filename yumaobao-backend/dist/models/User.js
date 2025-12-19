@@ -22,6 +22,7 @@ class UserModel {
         const now = new Date();
         const user = {
             id: (0, uuid_1.v4)(),
+            projects: userData.projects || [], // 初始化项目数组
             ...userData,
             createdAt: now,
             updatedAt: now

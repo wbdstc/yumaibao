@@ -24,6 +24,7 @@ class ProjectModel {
             id: (0, uuid_1.v4)(),
             status: 'planning', // 默认状态
             ...projectData,
+            users: projectData.users || [], // 确保users始终是数组
             createdAt: now,
             updatedAt: now
         };
@@ -33,6 +34,10 @@ class ProjectModel {
     // 根据ID查找项目
     async findById(id) {
         const project = await this.getCollection().findOne({ id });
+        // 确保users字段始终是数组
+        if (project && !project.users) {
+            project.users = [];
+        }
         return project;
     }
     // 查找所有项目

@@ -8,22 +8,35 @@ import router from '../router/index'
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api', // 设置为'/api'，确保请求路径符合代理配置要求
-  timeout: 10000, // 请求超时时间
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  timeout: 10000 // 请求超时时间
+  // 不设置全局Content-Type，让axios根据请求数据自动设置
 })
 
 // 请求拦截器 - 【已修复】
 api.interceptors.request.use(
   config => {
-    // 【关键修改】直接从 localStorage 读取 token，避免时机问题
-    const token = localStorage.getItem('token')
+    // 直接从 localStorage 读取 token，避免时机问题
+    let token = localStorage.getItem('token')
+    
+    // 添加更详细的调试日志
+    console.log('请求拦截器：开始处理请求', config.url)
+    console.log('请求拦截器：localStorage中的token', token ? token.substring(0, 20) + '...' : 'null')
+    
+    // 确保headers对象存在
+    if (!config.headers) {
+      config.headers = {}
+    }
     
     // 如果 token 存在，则添加到请求头
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-      console.log('请求拦截器：成功添加 token', token.substring(0, 20) + '...') // 打印前20个字符用于调试
+      console.log('请求拦截器：成功添加 token 到请求头')
+      // 打印完整的请求头（敏感信息已过滤）
+      const headersCopy = { ...config.headers }
+      if (headersCopy.Authorization) {
+        headersCopy.Authorization = headersCopy.Authorization.substring(0, 30) + '...'
+      }
+      console.log('请求拦截器：最终请求头', headersCopy)
     } else {
       console.log('请求拦截器：未找到 token，请求可能失败')
     }
@@ -32,6 +45,7 @@ api.interceptors.request.use(
   },
   error => {
     // 对请求错误做些什么
+    console.error('请求拦截器：请求配置错误', error.message)
     return Promise.reject(error)
   }
 )
@@ -44,14 +58,23 @@ api.interceptors.response.use(
   },
   error => {
     // 对响应错误做点什么
+    console.error('响应拦截器：捕获到错误', error.message)
+    
     if (error.response) {
+      console.error('响应拦截器：错误响应状态', error.response.status)
+      console.error('响应拦截器：错误响应数据', error.response.data)
+      
       switch (error.response.status) {
         case 401:
-          // 未授权，清除token并跳转到登录页
-          const userStore = useUserStore() // 在这里使用是安全的
-          userStore.logout()
-          router.push('/login')
-          ElMessage.error('登录已过期，请重新登录')
+          // 未授权，添加更详细的日志
+          console.error('响应拦截器：401未授权错误，当前token', localStorage.getItem('token') ? localStorage.getItem('token').substring(0, 20) + '...' : 'null')
+          // 延迟清除token和跳转到登录页，以便查看日志
+          setTimeout(() => {
+            const userStore = useUserStore() // 在这里使用是安全的
+            userStore.logout()
+            router.push('/login')
+            ElMessage.error('登录已过期，请重新登录')
+          }, 1000)
           break
         case 403:
           ElMessage.error('没有权限访问此资源')
@@ -67,9 +90,11 @@ api.interceptors.response.use(
       }
     } else if (error.request) {
       // 请求已发出，但没有收到响应
+      console.error('响应拦截器：请求发出但未收到响应', error.request)
       ElMessage.error('网络错误，服务器无响应')
     } else {
       // 请求配置错误
+      console.error('响应拦截器：请求配置错误', error.message)
       ElMessage.error(`请求配置错误：${error.message}`)
     }
     return Promise.reject(error)
@@ -140,6 +165,15 @@ export default {
     },
     getFloor(projectId, floorId) {
       return api.get(`/projects/${projectId}/floors/${floorId}`)
+    },
+    createFloor(projectId, floorData) {
+      return api.post(`/projects/${projectId}/floors`, floorData)
+    },
+    updateFloor(projectId, floorId, floorData) {
+      return api.put(`/projects/${projectId}/floors/${floorId}`, floorData)
+    },
+    deleteFloor(projectId, floorId) {
+      return api.delete(`/projects/${projectId}/floors/${floorId}`)
     }
   },
   // 预埋件相关API
@@ -187,11 +221,7 @@ export default {
       })
     },
     uploadBIMModel(data) {
-      return api.post('/models', data, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      })
+      return api.post('/models', data)
     },
     updateBIMModel(id, data) {
       return api.put(`/models/${id}`, data)

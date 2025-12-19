@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { getDB } from '../config/mongodb';
 import Model from '../models/Model';
+import Project from '../models/Project';
+import Floor from '../models/Floor';
 import { uploadFileToMinIO, downloadFileFromMinIO, deleteFileFromMinIO } from '../utils/fileUploadService';
 import { MINIO_BUCKETS } from '../config/minio';
 // 模型轻量化处理工具的导入已移除，因为现在使用MinIO存储
@@ -17,8 +19,32 @@ class ModelController {
       if (projectId) whereClause.projectId = projectId;
       if (floorId) whereClause.floorId = floorId;
       
+      // 1. 获取所有模型数据
       const models = await Model.findAll(whereClause);
-      return res.status(200).json(models);
+      
+      // 2. 提取所有不重复的projectId和floorId
+      const projectIds = [...new Set(models.map(model => model.projectId))];
+      const floorIds = [...new Set(models.map(model => model.floorId).filter(id => id))];
+      
+      // 3. 批量查询项目和楼层信息
+      const projects = await Project.findAll({ id: { $in: projectIds } });
+      const floors = await Floor.findAll({ id: { $in: floorIds } });
+      
+      // 4. 创建ID到名称的映射
+      const projectMap = new Map(projects.map(project => [project.id, project.name]));
+      const floorMap = new Map(floors.map(floor => [floor.id, floor.name]));
+      
+      // 5. 处理模型数据，替换ID为名称
+      const processedModels = models.map(model => ({
+        ...model,
+        projectName: projectMap.get(model.projectId) || model.projectId, // 使用实际项目名称，fallback到ID
+        floorName: model.floorId ? (floorMap.get(model.floorId) || model.floorId) : '无', // 使用实际楼层名称，fallback到ID或'无'
+        fileType: model.format, // 使用format作为fileType
+        uploadTime: model.uploadedAt, // 使用uploadedAt作为uploadTime
+        status: model.status || 'active' // 确保status字段存在，默认为active
+      }));
+      
+      return res.status(200).json(processedModels);
     } catch (error) {
       console.error('获取模型列表失败:', error);
       return res.status(500).json({ message: '获取模型列表失败', error: String(error) });
@@ -46,7 +72,7 @@ class ModelController {
   static async uploadModel(req: Request, res: Response) {
     try {
       const { projectId, floorId, name, type, description, version } = req.body;
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       const file = req.file;
 
       if (!userId) {

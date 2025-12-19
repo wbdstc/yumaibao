@@ -22,6 +22,7 @@ export interface ModelAttributes {
   description?: string;
   isLightweight?: boolean;
   metadata?: Record<string, any>;
+  status: 'active' | 'inactive';
 }
 
 export interface ModelCreationAttributes {
@@ -41,6 +42,7 @@ export interface ModelCreationAttributes {
   description?: string;
   isLightweight?: boolean;
   metadata?: Record<string, any>;
+  status?: 'active' | 'inactive';
 }
 
 class ModelModel {
@@ -65,7 +67,8 @@ class ModelModel {
       id: uuidv4(),
       ...modelData,
       version: modelData.version || '1.0',
-      uploadedAt: now
+      uploadedAt: now,
+      status: modelData.status || 'active'
     };
 
     const result = await this.getCollection().insertOne(model);

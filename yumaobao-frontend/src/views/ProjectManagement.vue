@@ -77,7 +77,7 @@
         <el-table-column prop="endDate" label="结束日期" width="150" />
         <el-table-column prop="createdBy" label="创建人" width="120" />
         <el-table-column prop="updatedAt" label="更新时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -94,6 +94,14 @@
             >
               <el-icon><Edit /></el-icon>
               编辑
+            </el-button>
+            <el-button
+              type="success"
+              size="small"
+              @click.stop="showFloorManagement(scope.row)"
+            >
+              <el-icon><Menu /></el-icon>
+              楼层配置
             </el-button>
             <el-button
               type="danger"
@@ -161,6 +169,14 @@
           >
             <el-icon><Edit /></el-icon>
             编辑
+          </el-button>
+          <el-button
+            type="success"
+            size="small"
+            @click.stop="showFloorManagement(project)"
+          >
+            <el-icon><Menu /></el-icon>
+            楼层
           </el-button>
           <el-button
             type="danger"
@@ -304,6 +320,142 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 楼层管理对话框 -->
+    <el-dialog
+      v-model="floorManagementDialogVisible"
+      title="楼层管理"
+      width="800px"
+      :close-on-click-modal="false"
+    >
+      <div class="floor-management">
+        <div class="floor-header">
+          <h3>{{ selectedProjectForFloors?.name }} - 楼层列表</h3>
+          <el-button type="primary" @click="showAddFloorDialog">
+            <el-icon><Plus /></el-icon>
+            新建楼层
+          </el-button>
+        </div>
+        
+        <el-table
+          :data="floors"
+          style="width: 100%"
+          border
+          stripe
+        >
+          <el-table-column type="index" label="序号" width="80" />
+          <el-table-column prop="name" label="楼层名称" width="150" />
+          <el-table-column prop="level" label="标高" width="120" />
+          <el-table-column prop="height" label="高度(m)" width="120" />
+          <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="createdAt" label="创建时间" width="180" />
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="scope">
+              <el-button
+                type="warning"
+                size="small"
+                @click.stop="showEditFloorDialog(scope.row)"
+              >
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click.stop="showDeleteFloorConfirm(scope.row)"
+              >
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="floorManagementDialogVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 新建楼层对话框 -->
+    <el-dialog
+      v-model="addFloorDialogVisible"
+      title="新建楼层"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="addFloorFormRef"
+        :model="addFloorForm"
+        :rules="floorRules"
+        label-width="120px"
+      >
+        <el-form-item label="楼层名称" prop="name">
+          <el-input v-model="addFloorForm.name" placeholder="请输入楼层名称，如：地下二层、一层、二层等" />
+        </el-form-item>
+        <el-form-item label="标高" prop="level">
+          <el-input-number v-model="addFloorForm.level" :min="-100" :max="1000" :step="0.1" placeholder="请输入楼层标高(m)" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="高度" prop="height">
+          <el-input-number v-model="addFloorForm.height" :min="0.1" :max="100" :step="0.1" placeholder="请输入楼层高度(m)" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="描述" prop="description">
+          <el-input
+            v-model="addFloorForm.description"
+            type="textarea"
+            rows="3"
+            placeholder="请输入楼层描述"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="addFloorDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleAddFloor">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑楼层对话框 -->
+    <el-dialog
+      v-model="editFloorDialogVisible"
+      title="编辑楼层"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="editFloorFormRef"
+        :model="editFloorForm"
+        :rules="floorRules"
+        label-width="120px"
+      >
+        <el-form-item label="楼层名称" prop="name">
+          <el-input v-model="editFloorForm.name" placeholder="请输入楼层名称" />
+        </el-form-item>
+        <el-form-item label="标高" prop="level">
+          <el-input-number v-model="editFloorForm.level" :min="-100" :max="1000" :step="0.1" placeholder="请输入楼层标高(m)" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="高度" prop="height">
+          <el-input-number v-model="editFloorForm.height" :min="0.1" :max="100" :step="0.1" placeholder="请输入楼层高度(m)" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="描述" prop="description">
+          <el-input
+            v-model="editFloorForm.description"
+            type="textarea"
+            rows="3"
+            placeholder="请输入楼层描述"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="editFloorDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleEditFloor">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -393,6 +545,67 @@ export default {
           },
           trigger: 'change'
         }
+      ]
+    }
+
+    // 楼层管理相关数据
+    const floorManagementDialogVisible = ref(false)
+    const addFloorDialogVisible = ref(false)
+    const editFloorDialogVisible = ref(false)
+    const selectedProjectForFloors = ref(null)
+    const floors = ref([])
+    
+    // 楼层表单引用
+    const addFloorFormRef = ref(null)
+    const editFloorFormRef = ref(null)
+    
+    // 楼层表单数据
+    const addFloorForm = reactive({
+      name: '',
+      level: 0,
+      height: 3.0,
+      description: ''
+    })
+    
+    const editFloorForm = reactive({
+      id: '',
+      name: '',
+      level: 0,
+      height: 3.0,
+      description: ''
+    })
+    
+    // 楼层表单验证规则
+    const floorRules = {
+      name: [
+        { required: true, message: '请输入楼层名称', trigger: 'blur' },
+        { min: 1, max: 50, message: '楼层名称长度在 1 到 50 个字符', trigger: 'blur' }
+      ],
+      level: [
+        { required: true, message: '请输入标高', trigger: 'blur' },
+        { validator: (rule, value, callback) => {
+            // 处理数字或字符串类型的值
+            const numValue = Number(value);
+            if (isNaN(numValue)) {
+              callback(new Error('标高必须是数字'));
+            } else {
+              callback();
+            }
+          }, trigger: 'blur' }
+      ],
+      height: [
+        { required: true, message: '请输入高度', trigger: 'blur' },
+        { validator: (rule, value, callback) => {
+            // 处理数字或字符串类型的值
+            const numValue = Number(value);
+            if (isNaN(numValue)) {
+              callback(new Error('高度必须是数字'));
+            } else if (numValue < 0.1) {
+              callback(new Error('高度不能小于 0.1m'));
+            } else {
+              callback();
+            }
+          }, trigger: 'blur' }
       ]
     }
 
@@ -586,6 +799,107 @@ export default {
       currentPage.value = newPage
     }
 
+    // 显示楼层管理对话框
+    const showFloorManagement = async (project) => {
+      selectedProjectForFloors.value = project
+      await loadFloors(project.id)
+      floorManagementDialogVisible.value = true
+    }
+
+    // 加载楼层数据
+    const loadFloors = async (projectId) => {
+      try {
+        const response = await api.floor.getFloors(projectId)
+        floors.value = response
+      } catch (error) {
+        console.error('获取楼层列表失败:', error)
+        ElMessage.error('获取楼层列表失败')
+        floors.value = []
+      }
+    }
+
+    // 显示新建楼层对话框
+    const showAddFloorDialog = () => {
+      // 重置表单
+      Object.assign(addFloorForm, {
+        name: '',
+        level: 0,
+        height: 3.0,
+        description: ''
+      })
+      if (addFloorFormRef.value) {
+        addFloorFormRef.value.resetFields()
+      }
+      addFloorDialogVisible.value = true
+    }
+
+    // 处理新建楼层
+    const handleAddFloor = async () => {
+      addFloorFormRef.value.validate(async (valid) => {
+        if (valid) {
+          try {
+            const response = await api.floor.createFloor(selectedProjectForFloors.value.id, addFloorForm)
+            ElMessage.success(response.message || '楼层创建成功')
+            addFloorDialogVisible.value = false
+            await loadFloors(selectedProjectForFloors.value.id)
+          } catch (error) {
+            console.error('创建楼层失败:', error)
+            const errorMessage = error.response?.data?.message || '创建楼层失败'
+            ElMessage.error(errorMessage)
+          }
+        }
+      })
+    }
+
+    // 显示编辑楼层对话框
+    const showEditFloorDialog = (floor) => {
+      // 填充表单数据
+      Object.assign(editFloorForm, floor)
+      editFloorDialogVisible.value = true
+    }
+
+    // 处理编辑楼层
+    const handleEditFloor = async () => {
+      editFloorFormRef.value.validate(async (valid) => {
+        if (valid) {
+          try {
+            const response = await api.floor.updateFloor(selectedProjectForFloors.value.id, editFloorForm.id, editFloorForm)
+            ElMessage.success(response.message || '楼层更新成功')
+            editFloorDialogVisible.value = false
+            await loadFloors(selectedProjectForFloors.value.id)
+          } catch (error) {
+            console.error('更新楼层失败:', error)
+            const errorMessage = error.response?.data?.message || '更新楼层失败'
+            ElMessage.error(errorMessage)
+          }
+        }
+      })
+    }
+
+    // 显示删除楼层确认对话框
+    const showDeleteFloorConfirm = (floor) => {
+      ElMessageBox.confirm(
+        `确定要删除楼层 "${floor.name}" 吗？此操作不可撤销。`,
+        '删除确认',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(async () => {
+        try {
+          await api.floor.deleteFloor(selectedProjectForFloors.value.id, floor.id)
+          await loadFloors(selectedProjectForFloors.value.id)
+          ElMessage.success('楼层删除成功')
+        } catch (error) {
+          console.error('删除楼层失败:', error)
+          ElMessage.error('删除楼层失败')
+        }
+      }).catch(() => {
+        // 取消删除
+      })
+    }
+
     // 加载项目数据
     const loadProjects = async () => {
       try {
@@ -626,7 +940,24 @@ export default {
       handleRowClick,
       handleSearch,
       handleSizeChange,
-      handleCurrentChange
+      handleCurrentChange,
+      // 楼层管理相关
+      floorManagementDialogVisible,
+      addFloorDialogVisible,
+      editFloorDialogVisible,
+      selectedProjectForFloors,
+      floors,
+      addFloorFormRef,
+      editFloorFormRef,
+      addFloorForm,
+      editFloorForm,
+      floorRules,
+      showFloorManagement,
+      showAddFloorDialog,
+      handleAddFloor,
+      showEditFloorDialog,
+      handleEditFloor,
+      showDeleteFloorConfirm
     }
   }
 }
@@ -908,5 +1239,40 @@ export default {
     padding: 8px 12px !important;
     font-size: 14px !important;
   }
+}
+
+/* 楼层管理样式 */
+.floor-management {
+  padding: 10px 0;
+}
+
+.floor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.floor-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--construction-blue);
+}
+
+/* 确保楼层表格样式一致 */
+:deep(.floor-management .el-table__header-wrapper th) {
+  background-color: var(--construction-blue) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  border-right: 1px solid var(--steel-silver) !important;
+}
+
+:deep(.floor-management .el-table__body-wrapper tr:hover) {
+  background-color: rgba(30, 58, 95, 0.05) !important;
+}
+
+:deep(.floor-management .el-table__body-wrapper td) {
+  border-right: 1px solid var(--steel-silver) !important;
+  border-bottom: 1px solid var(--steel-silver) !important;
 }
 </style>
