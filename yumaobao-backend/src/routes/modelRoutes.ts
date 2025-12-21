@@ -27,4 +27,8 @@ router.get('/:id/download', authenticate, ModelController.downloadModel);
 // 缩略图获取
 router.get('/:id/thumbnail', authenticate, ModelController.getThumbnail);
 
+// IFC转换相关路由
+router.post('/:id/convert', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), ModelController.convertIFCModel);
+router.get('/ifc/status', authenticate, ModelController.checkIFCConversionStatus);
+
 export default router;

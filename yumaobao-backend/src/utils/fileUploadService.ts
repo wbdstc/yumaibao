@@ -116,11 +116,16 @@ export const deleteFileFromMinIO = async (bucketName: string, objectName: string
       }
     } else {
       // 处理MinIO文件
-      await minioClient.removeObject(bucketName, objectName);
+      try {
+        await minioClient.removeObject(bucketName, objectName);
+      } catch (minioError) {
+        console.error('MinIO删除文件失败，可能服务未运行或连接失败:', minioError);
+        // 不抛出错误，继续执行后续逻辑
+      }
     }
   } catch (error) {
     console.error('删除文件失败:', error);
-    throw error;
+    // 不抛出错误，避免影响主流程
   }
 };
 

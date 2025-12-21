@@ -54,7 +54,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -64,6 +64,7 @@
             >
               编辑
             </el-button>
+
             <el-button
               type="danger"
               size="small"
@@ -180,7 +181,7 @@ import { ElMessage } from 'element-plus'
 import api from '../api/index'
 // 从api对象中解构所需的API方法
 const { getProjects } = api.project
-const { getBIMModels: getModels, uploadBIMModel: uploadModel, updateBIMModel: updateModel, deleteBIMModel: deleteModelApi } = api.bimModel
+const { getBIMModels: getModels, uploadBIMModel: uploadModel, updateBIMModel: updateModel, deleteBIMModel: deleteModelApi, convertIFCModel: convertIFCModelApi } = api.bimModel
 
 // 数据
 const selectedProjectId = ref('')
@@ -342,6 +343,44 @@ async function deleteModel(model) {
     loadModels()
   } catch (error) {
     ElMessage.error('模型删除失败: ' + error.message)
+  }
+}
+
+async function convertIFCModel(model) {
+  try {
+    await convertIFCModelApi(model.id, {
+      outputFormat: 'glb',
+      isLightweight: true,
+      quality: 80
+    })
+    ElMessage.success('IFC模型转换成功')
+    loadModels()
+  } catch (error) {
+    // 提取更详细的错误信息
+    let errorMsg = 'IFC模型转换失败'
+    
+    if (error.response) {
+      // 服务器返回了错误响应
+      const serverError = error.response.data
+      console.error('IFC转换服务器错误:', serverError)
+      
+      if (serverError.message) {
+        errorMsg = `转换失败: ${serverError.message}`
+      }
+      
+      if (serverError.error) {
+        errorMsg += `, 错误详情: ${serverError.error}`
+      }
+      
+      if (serverError.details) {
+        console.error('IFC转换详细错误:', serverError.details)
+      }
+    } else if (error.message) {
+      // 请求失败，但服务器没有返回响应
+      errorMsg = `转换失败: ${error.message}`
+    }
+    
+    ElMessage.error(errorMsg)
   }
 }
 </script>

@@ -228,6 +228,10 @@ export default {
     },
     deleteBIMModel(id) {
       return api.delete(`/models/${id}`)
+    },
+    // IFC模型转换API
+    convertIFCModel(id, params) {
+      return api.post(`/models/${id}/convert`, params)
     }
   },
   // 移动端相关API

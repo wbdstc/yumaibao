@@ -23,6 +23,7 @@ export interface ModelAttributes {
   isLightweight?: boolean;
   metadata?: Record<string, any>;
   status: 'active' | 'inactive';
+  parentModelId?: string; // 用于标识转换后的模型所属的原始模型
 }
 
 export interface ModelCreationAttributes {
@@ -43,6 +44,7 @@ export interface ModelCreationAttributes {
   isLightweight?: boolean;
   metadata?: Record<string, any>;
   status?: 'active' | 'inactive';
+  parentModelId?: string; // 用于标识转换后的模型所属的原始模型
 }
 
 class ModelModel {

@@ -47,6 +47,14 @@
         <el-button type="primary" @click="refreshViewer" icon="Refresh">
           刷新模型
         </el-button>
+        <el-button 
+          v-if="canUploadModel" 
+          type="success" 
+          @click="showUploadDialog = true" 
+          :icon="Upload"
+        >
+          上传模型
+        </el-button>
       </div>
     </div>
 
@@ -192,17 +200,99 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 模型上传对话框 -->
+    <el-dialog
+      v-model="showUploadDialog"
+      title="上传BIM模型"
+      width="50%"
+      :close-on-click-modal="!isUploading"
+      :close-on-press-escape="!isUploading"
+    >
+      <div class="upload-content">
+        <el-form label-position="top" :model="uploadForm" :rules="uploadRules" ref="uploadFormRef">
+          <el-form-item label="模型名称" prop="name">
+            <el-input v-model="uploadForm.name" placeholder="请输入模型名称" />
+          </el-form-item>
+          
+          <el-form-item label="模型类型" prop="modelType">
+            <el-select v-model="uploadForm.modelType" placeholder="请选择模型类型">
+              <el-option label="2D CAD" value="2d" />
+              <el-option label="3D BIM" value="3d" />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="项目" prop="projectId">
+            <el-select v-model="uploadForm.projectId" placeholder="请选择项目">
+              <el-option 
+                v-for="project in projects" 
+                :key="project.id" 
+                :label="project.name" 
+                :value="project.id" 
+              />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="是否轻量化" prop="isLightweight">
+            <el-switch v-model="uploadForm.isLightweight" />
+          </el-form-item>
+          
+          <el-form-item label="模型文件" prop="file">
+            <el-upload
+              v-model:file-list="fileList"
+              class="upload-demo"
+              action=""
+              :auto-upload="false"
+              :on-change="handleFileChange"
+              :file-list="fileList"
+              accept=".gltf,.glb,.dwg,.dxf"
+            >
+              <el-button type="primary" :icon="UploadFilled">选择文件</el-button>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持上传 .gltf, .glb, .dwg, .dxf 格式文件
+                </div>
+              </template>
+            </el-upload>
+          </el-form-item>
+          
+          <el-form-item v-if="isUploading">
+            <el-progress 
+              :percentage="uploadProgress" 
+              :status="uploadProgress === 100 ? 'success' : 'active'" 
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="cancelUpload" :disabled="isUploading">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="submitUpload" 
+            :loading="isUploading"
+            :disabled="!uploadFile || isUploading"
+          >
+            {{ isUploading ? '上传中...' : '上传' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, UploadFilled, Refresh, FullScreen, Grid,Upload, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
 import { useUserStore } from '../stores/index.js'
+// 导入Three.js相关模块
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 // 创建userStore实例
 const userStore = useUserStore()
@@ -210,6 +300,14 @@ const userStore = useUserStore()
 // 组件引用
 const cadViewerRef = ref(null)
 const bimViewerRef = ref(null)
+
+// Three.js相关状态
+const scene = ref(null)
+const camera = ref(null)
+const renderer = ref(null)
+const controls = ref(null)
+const bimModels = ref([]) // 存储加载的BIM模型
+const bimModelObjects = ref({}) // 存储模型对象，用于高亮
 
 // 状态管理
 const selectedProjectId = ref('')
@@ -221,6 +319,7 @@ const embeddedPartSearch = ref('')
 const currentView = ref('2d') // 2d, 3d, both
 const enableCoordinateSync = ref(true) // 启用2D/3D坐标同步
 const isBimModelLoaded = ref(false)
+const isThreeJsInitialized = ref(false)
 
 // 数据
 const projects = ref([])
@@ -277,6 +376,31 @@ watch(selectedFloorId, () => {
 
 // 对话框
 const layersDialogVisible = ref(false)
+const showUploadDialog = ref(false)
+const uploadProgress = ref(0)
+const isUploading = ref(false)
+const uploadFile = ref(null)
+
+// 上传表单相关
+const uploadFormRef = ref(null)
+const uploadForm = reactive({
+  name: '',
+  modelType: '3d',
+  projectId: '',
+  isLightweight: true,
+  file: null
+})
+
+// 上传规则
+const uploadRules = reactive({
+  name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  modelType: [{ required: true, message: '请选择模型类型', trigger: 'change' }],
+  projectId: [{ required: true, message: '请选择项目', trigger: 'change' }],
+  file: [{ required: true, message: '请选择模型文件', trigger: 'change' }]
+})
+
+// 文件列表
+const fileList = ref([])
 
 // 计算属性
 const filteredEmbeddedParts = computed(() => {
@@ -317,6 +441,31 @@ onMounted(() => {
 
   // 获取项目列表
   getProjects()
+  
+  // 添加窗口大小调整监听
+  window.addEventListener('resize', handleWindowResize)
+  
+  // 监听视图切换
+  watch(currentView, (newView) => {
+    if (newView !== '2d' && selectedModel.value) {
+      nextTick(() => {
+        loadBimModel()
+      })
+    }
+  })
+  
+  // 监听坐标同步开关
+  watch(enableCoordinateSync, (newValue) => {
+    if (newValue && currentView.value !== '2d' && selectedModel.value) {
+      loadBimModel()
+    }
+  })
+  
+  // 监听组件卸载，清理资源
+  onUnmounted(() => {
+    cleanupThreeJs()
+    window.removeEventListener('resize', handleWindowResize)
+  })
 })
 
 // 方法
@@ -441,6 +590,89 @@ const handleStatusFilterChange = () => {
   // 筛选状态变化时自动更新列表
 }
 
+// 上传相关方法
+const handleFileChange = (file, fileList) => {
+  // 处理文件选择
+  uploadFile.value = file.raw
+  uploadForm.file = file.raw
+}
+
+const submitUpload = async () => {
+  if (!uploadFormRef.value) return
+  
+  // 表单验证
+  await uploadFormRef.value.validate().then(async () => {
+    isUploading.value = true
+    uploadProgress.value = 0
+    
+    try {
+      // 创建FormData对象
+      const formData = new FormData()
+      formData.append('name', uploadForm.name)
+      formData.append('modelType', uploadForm.modelType)
+      formData.append('projectId', uploadForm.projectId)
+      formData.append('isLightweight', uploadForm.isLightweight)
+      formData.append('file', uploadFile.value)
+      
+      // 模拟上传进度
+      const progressInterval = setInterval(() => {
+        uploadProgress.value += 10
+        if (uploadProgress.value >= 100) {
+          clearInterval(progressInterval)
+        }
+      }, 200)
+      
+      // 调用上传API
+      await api.bimModel.uploadBIMModel(formData)
+      
+      // 清除进度模拟
+      clearInterval(progressInterval)
+      uploadProgress.value = 100
+      
+      // 上传成功，更新模型列表
+      await getModels(uploadForm.projectId)
+      
+      // 关闭对话框
+      showUploadDialog.value = false
+      
+      // 显示成功消息
+      ElMessage.success('模型上传成功')
+      
+      // 重置表单
+      resetUploadForm()
+    } catch (error) {
+      console.error('模型上传失败:', error)
+      ElMessage.error('模型上传失败')
+    } finally {
+      isUploading.value = false
+    }
+  }).catch((error) => {
+    console.error('表单验证失败:', error)
+    ElMessage.error('表单验证失败，请检查填写内容')
+  })
+}
+
+const cancelUpload = () => {
+  showUploadDialog.value = false
+  resetUploadForm()
+}
+
+const resetUploadForm = () => {
+  if (uploadFormRef.value) {
+    uploadFormRef.value.resetFields()
+  }
+  uploadFile.value = null
+  uploadProgress.value = 0
+  fileList.value = []
+  Object.assign(uploadForm, {
+    name: '',
+    modelType: '3d',
+    projectId: '',
+    isLightweight: true,
+    file: null
+  })
+}
+
 // 查看器相关方法
 const onViewerLoaded = () => {
   console.log('Viewer loaded')
@@ -457,7 +689,7 @@ const onViewerLoaded = () => {
   }, 500)
   
   // 如果启用了坐标同步，初始化BIM模型
-  if (enableCoordinateSync && currentView !== '2d') {
+  if (enableCoordinateSync.value && currentView.value !== '2d') {
     loadBimModel()
   }
 }
@@ -581,34 +813,368 @@ const onViewerMouseMove = (event) => {
   }
 }
 
+// 初始化Three.js场景
+const initThreeJs = () => {
+  if (!bimViewerRef.value) return
+  
+  const container = bimViewerRef.value
+  const width = container.clientWidth
+  const height = container.clientHeight
+  
+  // 创建场景
+  scene.value = new THREE.Scene()
+  scene.value.background = new THREE.Color(0xf5f7fa)
+  
+  // 创建相机
+  camera.value = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000)
+  camera.value.position.set(10, 10, 10)
+  
+  // 创建渲染器
+  renderer.value = new THREE.WebGLRenderer({ antialias: true })
+  renderer.value.setSize(width, height)
+  renderer.value.setPixelRatio(window.devicePixelRatio)
+  container.innerHTML = '' // 清空容器
+  container.appendChild(renderer.value.domElement)
+  
+  // 创建控制器
+  controls.value = new OrbitControls(camera.value, renderer.value.domElement)
+  controls.value.enableDamping = true
+  controls.value.dampingFactor = 0.05
+  
+  // 添加光源
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+  scene.value.add(ambientLight)
+  
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+  directionalLight.position.set(5, 10, 7.5)
+  scene.value.add(directionalLight)
+  
+  // 添加网格辅助线
+  const gridHelper = new THREE.GridHelper(100, 100)
+  scene.value.add(gridHelper)
+  
+  // 添加坐标轴辅助线
+  const axesHelper = new THREE.AxesHelper(5)
+  scene.value.add(axesHelper)
+  
+  isThreeJsInitialized.value = true
+  
+  // 开始动画循环
+  animate()
+}
+
+// 动画循环
+const animate = () => {
+  requestAnimationFrame(animate)
+  
+  if (controls.value) {
+    controls.value.update()
+  }
+  
+  if (renderer.value && scene.value && camera.value) {
+    renderer.value.render(scene.value, camera.value)
+  }
+}
+
+// 调整窗口大小
+const handleWindowResize = () => {
+  if (!bimViewerRef.value || !camera.value || !renderer.value) return
+  
+  const container = bimViewerRef.value
+  const width = container.clientWidth
+  const height = container.clientHeight
+  
+  camera.value.aspect = width / height
+  camera.value.updateProjectionMatrix()
+  
+  renderer.value.setSize(width, height)
+}
+
+// 清理Three.js资源
+const cleanupThreeJs = () => {
+  if (renderer.value && renderer.value.domElement) {
+    renderer.value.dispose()
+    if (bimViewerRef.value) {
+      bimViewerRef.value.innerHTML = ''
+    }
+  }
+  
+  // 清理场景中的对象
+  if (scene.value) {
+    scene.value.traverse((object) => {
+      if (object.geometry) {
+        object.geometry.dispose()
+      }
+      
+      if (object.material) {
+        if (Array.isArray(object.material)) {
+          object.material.forEach((material) => material.dispose())
+        } else {
+          object.material.dispose()
+        }
+      }
+    })
+  }
+  
+  scene.value = null
+  camera.value = null
+  renderer.value = null
+  controls.value = null
+  bimModels.value = []
+  bimModelObjects.value = {}
+  isThreeJsInitialized.value = false
+  isBimModelLoaded.value = false
+}
+
 // 加载3D BIM模型
-const loadBimModel = () => {
+const loadBimModel = async () => {
   if (!selectedModel.value || !bimViewerRef.value) return
   
   console.log('加载3D BIM模型:', selectedModel.value.name)
   isBimModelLoaded.value = false
   
-  // 模拟3D模型加载过程
-  setTimeout(() => {
-    console.log('3D BIM模型加载完成')
-    isBimModelLoaded.value = true
+  // 确保Three.js已初始化
+  if (!isThreeJsInitialized.value) {
+    initThreeJs()
+  }
+  
+  try {
+    // 从服务器获取3D模型文件
+    const response = await api.bimModel.downloadBIMModel(selectedModel.value.id, true)
     
-    // 实际项目中，这里应该使用Three.js或其他3D库加载BIM模型
-    // 例如：
-    // const scene = new THREE.Scene()
-    // const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000)
-    // const renderer = new THREE.WebGLRenderer()
-    // // ... 加载模型并渲染 ...
-  }, 2000)
+    // 清空现有模型
+    bimModels.value.forEach(model => {
+      scene.value.remove(model)
+    })
+    bimModels.value = []
+    bimModelObjects.value = {}
+    
+    // 创建Blob对象
+    const blob = new Blob([response], { type: 'model/gltf-binary' })
+    const modelUrl = URL.createObjectURL(blob)
+    
+    // 使用GLTFLoader加载模型
+    const loader = new GLTFLoader()
+    loader.load(
+      modelUrl,
+      (gltf) => {
+        // 模型加载成功
+        const model = gltf.scene
+        scene.value.add(model)
+        bimModels.value.push(model)
+        
+        // 为模型中的每个对象添加用户数据，方便后续操作
+        model.traverse((object) => {
+          if (object.isMesh) {
+            // 假设模型中对象的name属性包含预埋件ID
+            // 实际项目中，需要根据模型的具体结构进行调整
+            const embeddedPartId = object.name.replace(/[^0-9]/g, '')
+            if (embeddedPartId) {
+              object.userData.embeddedPartId = embeddedPartId
+              bimModelObjects.value[embeddedPartId] = object
+            }
+          }
+        })
+        
+        // 调整相机位置以适合模型
+        const box = new THREE.Box3().setFromObject(model)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        const maxDim = Math.max(size.x, size.y, size.z)
+        const fov = camera.value.fov * (Math.PI / 180)
+        let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2))
+        cameraZ *= 1.5
+        
+        camera.value.position.set(center.x, center.y + size.y * 0.5, center.z + cameraZ)
+        controls.value.target.copy(center)
+        controls.value.update()
+        
+        // 添加预埋件球体（如果模型中没有预埋件对象）
+        if (Object.keys(bimModelObjects.value).length === 0) {
+          createEmbeddedPartSpheres()
+        }
+        
+        isBimModelLoaded.value = true
+        console.log('3D BIM模型加载完成')
+        ElMessage.success('3D BIM模型加载完成')
+        
+        // 释放URL对象
+        URL.revokeObjectURL(modelUrl)
+      },
+      (progress) => {
+        // 模型加载进度
+        console.log('模型加载进度:', (progress.loaded / progress.total) * 100, '%')
+      },
+      (error) => {
+        // 模型加载失败
+        console.error('加载3D BIM模型失败:', error)
+        ElMessage.error('加载3D BIM模型失败')
+        isBimModelLoaded.value = false
+        
+        // 如果加载失败，创建演示模型作为备选
+        createDemoModel()
+        isBimModelLoaded.value = true
+        
+        // 释放URL对象
+        URL.revokeObjectURL(modelUrl)
+      }
+    )
+  } catch (error) {
+    console.error('加载3D BIM模型失败:', error)
+    ElMessage.error('加载3D BIM模型失败')
+    
+    // 如果获取模型文件失败，创建演示模型作为备选
+    createDemoModel()
+    isBimModelLoaded.value = true
+  }
+}
+
+// 创建预埋件球体（当模型中没有预埋件对象时使用）
+const createEmbeddedPartSpheres = () => {
+  if (!scene.value) return
+  
+  embeddedParts.value.forEach((ep) => {
+    // 尝试从2D模型中获取预埋件的实际位置
+    // 实际项目中，需要根据2D模型和3D模型的坐标映射关系来计算
+    const position = getRandomPosition()
+    const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
+    const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
+      color: getStatusColor(ep.status)
+    })
+    const embeddedPartMesh = new THREE.Mesh(embeddedPartGeometry, embeddedPartMaterial)
+    embeddedPartMesh.position.set(position.x, position.y, position.z)
+    embeddedPartMesh.userData = { embeddedPartId: ep.id }
+    
+    scene.value.add(embeddedPartMesh)
+    bimModelObjects.value[ep.id] = embeddedPartMesh
+  })
+}
+
+// 创建演示模型
+const createDemoModel = () => {
+  if (!scene.value) return
+  
+  // 清空现有模型
+  bimModels.value.forEach(model => {
+    scene.value.remove(model)
+  })
+  bimModels.value = []
+  bimModelObjects.value = {}
+  
+  // 创建一个建筑模型（简化版）
+  const buildingGroup = new THREE.Group()
+  
+  // 建筑主体
+  const buildingGeometry = new THREE.BoxGeometry(20, 15, 20)
+  const buildingMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x87CEEB,
+    transparent: true,
+    opacity: 0.7
+  })
+  const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial)
+  buildingGroup.add(buildingMesh)
+  
+  // 楼层分割线
+  for (let i = 1; i < 5; i++) {
+    const floorGeometry = new THREE.BoxGeometry(21, 0.1, 21)
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF })
+    const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial)
+    floorMesh.position.y = (i * 3) - 7.5
+    buildingGroup.add(floorMesh)
+  }
+  
+  // 添加一些预埋件（作为示例）
+  embeddedParts.value.forEach((ep, index) => {
+    const position = getRandomPosition()
+    const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
+    const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
+      color: getStatusColor(ep.status)
+    })
+    const embeddedPartMesh = new THREE.Mesh(embeddedPartGeometry, embeddedPartMaterial)
+    embeddedPartMesh.position.set(position.x, position.y, position.z)
+    embeddedPartMesh.userData = { embeddedPartId: ep.id }
+    
+    buildingGroup.add(embeddedPartMesh)
+    bimModelObjects.value[ep.id] = embeddedPartMesh
+  })
+  
+  scene.value.add(buildingGroup)
+  bimModels.value.push(buildingGroup)
+  
+  // 调整相机位置以适合模型
+  const box = new THREE.Box3().setFromObject(buildingGroup)
+  const center = box.getCenter(new THREE.Vector3())
+  const size = box.getSize(new THREE.Vector3())
+  const maxDim = Math.max(size.x, size.y, size.z)
+  const fov = camera.value.fov * (Math.PI / 180)
+  let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2))
+  cameraZ *= 1.5
+  
+  camera.value.position.set(center.x, center.y + size.y * 0.5, center.z + cameraZ)
+  controls.value.target.copy(center)
+  controls.value.update()
+}
+
+// 获取随机位置
+const getRandomPosition = () => {
+  return {
+    x: (Math.random() - 0.5) * 18,
+    y: (Math.random() - 0.5) * 13,
+    z: (Math.random() - 0.5) * 18
+  }
+}
+
+// 根据状态获取颜色
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'pending':
+      return 0x409eff // 蓝色
+    case 'installed':
+      return 0x67c23a // 绿色
+    case 'inspected':
+      return 0xe6a23c // 黄色
+    case 'completed':
+      return 0x909399 // 灰色
+    default:
+      return 0x409eff
+  }
 }
 
 // 在3D BIM视图中高亮预埋件
 const highlightInBimViewer = (embeddedPart) => {
-  if (!bimViewerRef.value) return
+  if (!bimViewerRef.value || !scene.value) return
   
   console.log('在3D视图中高亮:', embeddedPart.name)
-  // 实际项目中，这里应该使用3D库的API来高亮指定的预埋件
-  // 例如，在Three.js中可以通过修改材质颜色或添加发光效果来实现高亮
+  
+  // 恢复所有模型的原始颜色
+  Object.values(bimModelObjects.value).forEach(obj => {
+    if (obj.userData.originalColor) {
+      obj.material.color.set(obj.userData.originalColor)
+      obj.material.emissive.set(0x000000)
+    }
+  })
+  
+  // 高亮选中的预埋件
+  const targetObject = bimModelObjects.value[embeddedPart.id]
+  if (targetObject) {
+    // 保存原始颜色
+    if (!targetObject.userData.originalColor) {
+      targetObject.userData.originalColor = targetObject.material.color.clone()
+    }
+    
+    // 设置高亮效果
+    targetObject.material.emissive.set(0xffff00)
+    targetObject.material.emissiveIntensity = 0.5
+    
+    // 聚焦到选中的对象
+    controls.value.target.copy(targetObject.position)
+    camera.value.position.set(
+      targetObject.position.x + 5,
+      targetObject.position.y + 5,
+      targetObject.position.z + 5
+    )
+    controls.value.update()
+  }
 }
 
 

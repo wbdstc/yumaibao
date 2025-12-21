@@ -57,4 +57,7 @@ router.get('/project/:projectId/floor/:floorId', auth_1.default, (0, auth_1.auth
 router.get('/:id/download', auth_1.default, ModelController_1.default.downloadModel);
 // 缩略图获取
 router.get('/:id/thumbnail', auth_1.default, ModelController_1.default.getThumbnail);
+// IFC转换相关路由
+router.post('/:id/convert', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), ModelController_1.default.convertIFCModel);
+router.get('/ifc/status', auth_1.default, ModelController_1.default.checkIFCConversionStatus);
 exports.default = router;
