@@ -1,0 +1,32 @@
+{
+  "main": {
+    "mainMenu": {
+      "new": "New Drawing",
+      "open": "Open Drawing",
+      "save": "Save Drawing",
+      "export": "Export to SVG"
+    },
+    "verticalToolbar": {
+      "select": {
+        "text": "Select",
+        "description": "Select entities"
+      },
+      "pan": {
+        "text": "Pan",
+        "description": "Shifts the view without changing the viewing direction or magnification"
+      },
+      "zoomToExtent": {
+        "text": "Zoom Extents",
+        "description": "Zooms to display the maximum extents of all entities"
+      },
+      "zoomToBox": {
+        "text": "Zoom Window",
+        "description": "Zooms to display an area specified by a rectangular window"
+      },
+      "layer": {
+        "text": "Layer",
+        "description": "Manages layers"
+      }
+    }
+  }
+}

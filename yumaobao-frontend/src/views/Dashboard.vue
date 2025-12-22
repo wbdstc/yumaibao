@@ -323,7 +323,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore, useProjectStore, useEmbeddedPartStore } from '../stores/index'
 import {
@@ -511,17 +511,58 @@ export default {
       // 初始化状态分布图表
       statusChart = echarts.init(statusChartRef.value)
       updateStatusChart()
-
+      
       // 初始化安装进度趋势图
       trendChart = echarts.init(trendChartRef.value)
       updateTrendChart()
-
-      // 监听窗口大小变化
-      window.addEventListener('resize', () => {
-        statusChart?.resize()
-        trendChart?.resize()
-      })
+      
+      // 确保图表在初始化后正确调整大小
+      resizeCharts()
     }
+
+    // 监听窗口大小变化，使用防抖函数
+    let resizeTimer = null
+    const resizeCharts = () => {
+      // 清除之前的定时器
+      if (resizeTimer) {
+        clearTimeout(resizeTimer)
+      }
+      
+      // 设置新的定时器，延迟执行resize
+      resizeTimer = setTimeout(() => {
+        // 确保DOM元素存在且图表实例可用
+        if (statusChartRef.value && statusChart) {
+          try {
+            statusChart.resize()
+          } catch (error) {
+            console.error('Failed to resize status chart:', error)
+          }
+        }
+        if (trendChartRef.value && trendChart) {
+          try {
+            trendChart.resize()
+          } catch (error) {
+            console.error('Failed to resize trend chart:', error)
+          }
+        }
+      }, 100) // 100ms防抖
+    }
+
+    window.addEventListener('resize', resizeCharts)
+    
+    // 组件卸载时清理
+    onUnmounted(() => {
+      window.removeEventListener('resize', resizeCharts)
+      // 销毁图表实例
+      if (statusChart) {
+        statusChart.dispose()
+        statusChart = null
+      }
+      if (trendChart) {
+        trendChart.dispose()
+        trendChart = null
+      }
+    })
 
     // 更新状态分布图表
     const updateStatusChart = () => {
@@ -662,23 +703,23 @@ export default {
         loading.value = true
         
         // 获取项目数据
-        const projectsResponse = await api.project.getProjects()
-        const allProjects = projectsResponse.data || []
+        const allProjects = await api.project.getProjects()
         
         // 获取预埋件数据
-        const embeddedPartsResponse = await api.embeddedPart.getEmbeddedParts()
-        const allEmbeddedParts = embeddedPartsResponse.data || []
+        const allEmbeddedParts = await api.embeddedPart.getEmbeddedParts()
+        // 确保allEmbeddedParts始终是数组
+        const embeddedPartsArray = Array.isArray(allEmbeddedParts) ? allEmbeddedParts : []
         
         // 计算项目统计
         projectStats.totalProjects = allProjects.length
-        projectStats.activeProjects = allProjects.filter(p => p.status === 'active').length
+        projectStats.activeProjects = allProjects.filter(p => p.status === 'under_construction').length
         projectStats.completedProjects = allProjects.filter(p => p.status === 'completed').length
         
         // 计算预埋件统计
-        embeddedPartStats.totalParts = allEmbeddedParts.length
-        embeddedPartStats.installedParts = allEmbeddedParts.filter(p => p.status === 'installed').length
-        embeddedPartStats.inspectedParts = allEmbeddedParts.filter(p => p.status === 'inspected').length
-        embeddedPartStats.pendingParts = allEmbeddedParts.filter(p => p.status === 'pending').length
+        embeddedPartStats.totalParts = embeddedPartsArray.length
+        embeddedPartStats.installedParts = embeddedPartsArray.filter(p => p.status === 'installed').length
+        embeddedPartStats.inspectedParts = embeddedPartsArray.filter(p => p.status === 'inspected').length
+        embeddedPartStats.pendingParts = embeddedPartsArray.filter(p => p.status === 'pending').length
         
         // 最近项目（按更新时间排序，取前3个）
         recentProjects.value = [...allProjects]
@@ -686,7 +727,7 @@ export default {
           .slice(0, 3)
         
         // 最近扫描记录（从预埋件中提取安装/质检记录，按时间排序）
-        recentScanRecords.value = allEmbeddedParts
+        recentScanRecords.value = embeddedPartsArray
           .filter(p => p.statusHistory && p.statusHistory.length > 0)
           .flatMap(part => {
             return part.statusHistory.map(record => ({
@@ -703,7 +744,7 @@ export default {
         
         // 项目列表（带预埋件统计）
         projects.value = allProjects.map(project => {
-          const projectParts = allEmbeddedParts.filter(p => p.projectId === project.id)
+          const projectParts = embeddedPartsArray.filter(p => p.projectId === project.id)
           return {
             ...project,
             code: project.code || `PRJ-${project.id.slice(-6).toUpperCase()}`,

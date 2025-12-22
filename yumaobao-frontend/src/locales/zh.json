@@ -1,0 +1,32 @@
+{
+  "main": {
+    "mainMenu": {
+      "new": "新建图纸",
+      "open": "打开图纸",
+      "save": "保存图纸",
+      "export": "导出为SVG"
+    },
+    "verticalToolbar": {
+      "select": {
+        "text": "选择",
+        "description": "选择实体"
+      },
+      "pan": {
+        "text": "平移",
+        "description": "在不改变观察方向或放大倍数的情况下移动视图"
+      },
+      "zoomToExtent": {
+        "text": "缩放至范围",
+        "description": "缩放以显示所有实体的最大范围"
+      },
+      "zoomToBox": {
+        "text": "窗口缩放",
+        "description": "缩放以显示由矩形窗口指定的区域"
+      },
+      "layer": {
+        "text": "图层",
+        "description": "管理图层"
+      }
+    }
+  }
+}

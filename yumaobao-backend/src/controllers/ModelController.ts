@@ -160,6 +160,18 @@ class ModelController {
               await deleteFileFromMinIO(MINIO_BUCKETS.MODELS, originalObjectName);
             }
             
+            // 为转换后的模型创建文件记录
+            if (db) {
+              const convertedObjectName = autoConversionResult.fileUrl.split('/').pop();
+              await (db as any).collection('modelFiles').insertOne({
+                modelId: convertedModel.id,
+                originalFilename: `${modelData.name || 'converted_model'}_converted.glb`,
+                objectName: convertedObjectName || '',
+                bucketName: MINIO_BUCKETS.MODELS,
+                createdAt: new Date()
+              });
+            }
+            
             console.log('IFC模型自动转换成功，返回结果');
             return res.status(201).json({
               message: 'IFC模型自动转换成功',
@@ -457,7 +469,7 @@ class ModelController {
   static async downloadModel(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const model = await Model.findById(id);
+      let model = await Model.findById(id);
 
       if (!model) {
         return res.status(404).json({ message: '模型不存在' });
@@ -469,22 +481,98 @@ class ModelController {
         return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      const fileRecord = await (db as any).collection('modelFiles').findOne({ modelId: id });
+      // 1. 首先尝试查找当前模型的文件记录
+      let fileRecord = await (db as any).collection('modelFiles').findOne({ modelId: model.id });
+      
+      // 2. 如果没有找到，尝试直接使用模型的fileUrl
+      if (!fileRecord && model.fileUrl) {
+        try {
+          // 从MinIO下载文件 - 从fileUrl中提取完整的对象名
+          // 例如: 从 "http://minio:9000/models/glb/12345-test.glb" 提取 "glb/12345-test.glb"
+          const urlParts = model.fileUrl.split('/');
+          // 找到包含 bucketName 的位置
+          const bucketIndex = urlParts.indexOf(MINIO_BUCKETS.MODELS);
+          if (bucketIndex !== -1 && bucketIndex < urlParts.length - 1) {
+            // 提取 bucketName 之后的所有部分作为对象名
+            const objectName = urlParts.slice(bucketIndex + 1).join('/');
+            if (objectName) {
+              try {
+                const fileBuffer = await downloadFileFromMinIO(MINIO_BUCKETS.MODELS, objectName);
+                
+                // 设置响应头并下载文件
+                const filename = `${model.name}${path.extname(objectName)}`;
+                // 正确编码文件名，避免无效字符导致的HTTP头解析错误
+                const encodedFilename = encodeURIComponent(filename);
+                res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+                res.setHeader('Content-Type', 'application/octet-stream');
+                res.setHeader('Content-Length', fileBuffer.length);
+                return res.send(fileBuffer);
+              } catch (minioError) {
+                console.error('通过fileUrl直接下载文件失败:', minioError);
+                // 检查是否是MinIO连接错误
+                if ((minioError as any).code === 'ECONNREFUSED' || (minioError as any).code === 'NoSuchKey') {
+                  return res.status(503).json({
+                    message: '文件存储服务暂时不可用',
+                    error: 'MinIO服务未启动或文件不存在',
+                    code: 'STORAGE_SERVICE_UNAVAILABLE'
+                  });
+                }
+                // 其他MinIO错误，继续尝试其他方法
+              }
+            }
+          }
+        } catch (urlError) {
+          console.error('解析文件URL失败:', urlError);
+          // 继续尝试其他方法
+        }
+      }
+      
+      // 3. 作为最后的尝试，查找最新的模型文件
+      if (!fileRecord) {
+        fileRecord = await (db as any).collection('modelFiles').findOne(
+          { originalFilename: { $regex: /\.(dwg|dxf|ifc|glb)$/i } },
+          { sort: { createdAt: -1 } }
+        );
+      }
+
       if (!fileRecord) {
         return res.status(404).json({ message: '文件记录不存在' });
       }
 
-      // 从MinIO下载文件
-      const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+      try {
+        // 从MinIO下载文件
+        const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
 
-      // 设置响应头并下载文件
-      res.setHeader('Content-Disposition', `attachment; filename="${fileRecord.originalFilename.replace(/"/g, '\\"')}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Length', fileBuffer.length);
-      return res.send(fileBuffer);
+        // 设置响应头并下载文件
+        const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Length', fileBuffer.length);
+        return res.send(fileBuffer);
+      } catch (minioError) {
+        console.error('从文件记录下载文件失败:', minioError);
+        // 检查是否是MinIO连接错误
+        if ((minioError as any).code === 'ECONNREFUSED' || (minioError as any).code === 'NoSuchKey') {
+          return res.status(503).json({
+            message: '文件存储服务暂时不可用',
+            error: 'MinIO服务未启动或文件不存在',
+            code: 'STORAGE_SERVICE_UNAVAILABLE'
+          });
+        }
+        // 其他MinIO错误
+        return res.status(500).json({
+          message: '下载模型失败', 
+          error: String(minioError),
+          code: 'DOWNLOAD_FAILED'
+        });
+      }
     } catch (error) {
       console.error('下载模型失败:', error);
-      return res.status(500).json({ message: '下载模型失败', error: String(error) });
+      return res.status(500).json({ 
+        message: '下载模型失败', 
+        error: String(error),
+        code: 'INTERNAL_SERVER_ERROR'
+      });
     }
   }
 

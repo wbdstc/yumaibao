@@ -13,21 +13,27 @@ class ProjectController {
         try {
             const user = req.user;
             let projects;
+            console.log('获取项目列表 - 用户信息:', user ? { id: user.id, role: user.role } : '未登录');
             if (!user) {
                 // 未登录用户（如注册页面）可以查看所有项目用于选择
+                console.log('获取项目列表 - 未登录用户，获取所有项目');
                 projects = await Project_1.default.findAll();
             }
             else if (user.role === 'admin') {
                 // 管理员可以查看所有项目
+                console.log('获取项目列表 - 管理员，获取所有项目');
                 projects = await Project_1.default.findAll();
             }
             else if (user.role === 'projectManager' || user.role === 'projectEngineer') {
                 // 项目管理员和工程师可以查看自己创建的项目
+                console.log('获取项目列表 - 项目管理员/工程师，获取自己创建的项目，用户ID:', user.id);
                 projects = await Project_1.default.findByUserId(user.id);
             }
             else if (user.role === 'qualityInspector' || user.role === 'installer') {
                 // 质检人员和安装人员只能查看自己关联的项目
+                console.log('获取项目列表 - 质检人员/安装人员，获取关联项目，用户ID:', user.id);
                 const userData = await User_1.default.findById(user.id);
+                console.log('获取项目列表 - 用户数据:', userData ? { id: userData.id, projects: userData.projects } : '未找到用户数据');
                 if (userData && userData.projects && userData.projects.length > 0) {
                     projects = await Project_1.default.findAll({ id: { $in: userData.projects } });
                 }
@@ -36,13 +42,20 @@ class ProjectController {
                 }
             }
             else {
+                console.log('获取项目列表 - 无效角色，返回403', user.role);
                 return res.status(403).json({ message: '无权访问项目列表' });
             }
+            console.log('获取项目列表成功 - 项目数量:', projects.length);
             return res.status(200).json(projects);
         }
         catch (error) {
             console.error('获取项目列表失败:', error);
-            return res.status(500).json({ message: '获取项目列表失败', error: String(error) });
+            console.error('错误堆栈:', error.stack);
+            return res.status(500).json({
+                message: '获取项目列表失败',
+                error: String(error),
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
         }
     }
     static async getProjectById(req, res) {

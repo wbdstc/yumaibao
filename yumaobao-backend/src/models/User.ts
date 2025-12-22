@@ -59,25 +59,41 @@ class UserModel {
   // 根据ID查找用户
   async findById(id: string): Promise<UserAttributes | null> {
     const user = await this.getCollection().findOne<UserAttributes>({ id });
+    // 确保projects字段始终是数组
+    if (user && !user.projects) {
+      user.projects = [];
+    }
     return user;
   }
 
   // 根据邮箱查找用户
   async findByEmail(email: string): Promise<UserAttributes | null> {
     const user = await this.getCollection().findOne<UserAttributes>({ email });
+    // 确保projects字段始终是数组
+    if (user && !user.projects) {
+      user.projects = [];
+    }
     return user;
   }
 
   // 根据手机号查找用户
   async findByPhone(phone: string): Promise<UserAttributes | null> {
     const user = await this.getCollection().findOne<UserAttributes>({ phone });
+    // 确保projects字段始终是数组
+    if (user && !user.projects) {
+      user.projects = [];
+    }
     return user;
   }
 
   // 查找所有用户
   async findAll(): Promise<UserAttributes[]> {
     const users = await this.getCollection().find<UserAttributes>({}).toArray();
-    return users;
+    // 确保每个用户的projects字段始终是数组
+    return users.map(user => ({
+      ...user,
+      projects: user.projects || []
+    }));
   }
 
   // 更新用户信息

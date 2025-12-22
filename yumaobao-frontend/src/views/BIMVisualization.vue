@@ -34,6 +34,21 @@
             :value="floor.id"
           />
         </el-select>
+        <el-select
+          v-model="selectedModelId"
+          placeholder="选择模型"
+          class="model-select"
+          filterable
+          :disabled="!selectedProjectId || models.length === 0"
+          @change="handleModelChange"
+        >
+          <el-option
+            v-for="model in models"
+            :key="model.id"
+            :label="model.name"
+            :value="model.id"
+          />
+        </el-select>
         <div class="floor-controls">
           <el-button type="primary" size="small" @click="showPreviousFloor" :disabled="!canNavigateFloors">
             <el-icon><ArrowUp /></el-icon>
@@ -46,14 +61,6 @@
       <div class="header-right">
         <el-button type="primary" @click="refreshViewer" icon="Refresh">
           刷新模型
-        </el-button>
-        <el-button 
-          v-if="canUploadModel" 
-          type="success" 
-          @click="showUploadDialog = true" 
-          :icon="Upload"
-        >
-          上传模型
         </el-button>
       </div>
     </div>
@@ -90,9 +97,9 @@
         <div class="view-title">2D CAD视图</div>
         <MlCadViewer
           ref="cadViewerRef"
-          locale="zh"
+          :locale="locale"
           :local-file="modelFile"
-          :useMainThreadDraw="false"
+          :useMainThreadDraw="true"
           @loaded="onViewerLoaded"
           @click="onViewerClick"
           @mouse-move="onViewerMouseMove"
@@ -200,91 +207,13 @@
         </span>
       </template>
     </el-dialog>
-
-    <!-- 模型上传对话框 -->
-    <el-dialog
-      v-model="showUploadDialog"
-      title="上传BIM模型"
-      width="50%"
-      :close-on-click-modal="!isUploading"
-      :close-on-press-escape="!isUploading"
-    >
-      <div class="upload-content">
-        <el-form label-position="top" :model="uploadForm" :rules="uploadRules" ref="uploadFormRef">
-          <el-form-item label="模型名称" prop="name">
-            <el-input v-model="uploadForm.name" placeholder="请输入模型名称" />
-          </el-form-item>
-          
-          <el-form-item label="模型类型" prop="modelType">
-            <el-select v-model="uploadForm.modelType" placeholder="请选择模型类型">
-              <el-option label="2D CAD" value="2d" />
-              <el-option label="3D BIM" value="3d" />
-            </el-select>
-          </el-form-item>
-          
-          <el-form-item label="项目" prop="projectId">
-            <el-select v-model="uploadForm.projectId" placeholder="请选择项目">
-              <el-option 
-                v-for="project in projects" 
-                :key="project.id" 
-                :label="project.name" 
-                :value="project.id" 
-              />
-            </el-select>
-          </el-form-item>
-          
-          <el-form-item label="是否轻量化" prop="isLightweight">
-            <el-switch v-model="uploadForm.isLightweight" />
-          </el-form-item>
-          
-          <el-form-item label="模型文件" prop="file">
-            <el-upload
-              v-model:file-list="fileList"
-              class="upload-demo"
-              action=""
-              :auto-upload="false"
-              :on-change="handleFileChange"
-              :file-list="fileList"
-              accept=".gltf,.glb,.dwg,.dxf"
-            >
-              <el-button type="primary" :icon="UploadFilled">选择文件</el-button>
-              <template #tip>
-                <div class="el-upload__tip">
-                  支持上传 .gltf, .glb, .dwg, .dxf 格式文件
-                </div>
-              </template>
-            </el-upload>
-          </el-form-item>
-          
-          <el-form-item v-if="isUploading">
-            <el-progress 
-              :percentage="uploadProgress" 
-              :status="uploadProgress === 100 ? 'success' : 'active'" 
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="cancelUpload" :disabled="isUploading">取消</el-button>
-          <el-button 
-            type="primary" 
-            @click="submitUpload" 
-            :loading="isUploading"
-            :disabled="!uploadFile || isUploading"
-          >
-            {{ isUploading ? '上传中...' : '上传' }}
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid,Upload, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
@@ -318,8 +247,10 @@ const showGrid = ref(true)
 const embeddedPartSearch = ref('')
 const currentView = ref('2d') // 2d, 3d, both
 const enableCoordinateSync = ref(true) // 启用2D/3D坐标同步
+const locale = ref('zh') // 语言设置，修复i18n错误
 const isBimModelLoaded = ref(false)
 const isThreeJsInitialized = ref(false)
+const refreshTimer = ref(null) // 自动刷新定时器
 
 // 数据
 const projects = ref([])
@@ -363,11 +294,7 @@ const updateVisibleEmbeddedParts = () => {
   )
 }
 
-// 添加计算属性
-const canUploadModel = computed(() => {
-  const role = userStore.userRole || ''
-  return ['admin', 'projectManager', 'projectEngineer'].includes(role)
-})
+
 
 // 监听楼层变化，更新可见预埋件
 watch(selectedFloorId, () => {
@@ -376,31 +303,6 @@ watch(selectedFloorId, () => {
 
 // 对话框
 const layersDialogVisible = ref(false)
-const showUploadDialog = ref(false)
-const uploadProgress = ref(0)
-const isUploading = ref(false)
-const uploadFile = ref(null)
-
-// 上传表单相关
-const uploadFormRef = ref(null)
-const uploadForm = reactive({
-  name: '',
-  modelType: '3d',
-  projectId: '',
-  isLightweight: true,
-  file: null
-})
-
-// 上传规则
-const uploadRules = reactive({
-  name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
-  modelType: [{ required: true, message: '请选择模型类型', trigger: 'change' }],
-  projectId: [{ required: true, message: '请选择项目', trigger: 'change' }],
-  file: [{ required: true, message: '请选择模型文件', trigger: 'change' }]
-})
-
-// 文件列表
-const fileList = ref([])
 
 // 计算属性
 const filteredEmbeddedParts = computed(() => {
@@ -445,6 +347,29 @@ onMounted(() => {
   // 添加窗口大小调整监听
   window.addEventListener('resize', handleWindowResize)
   
+  // 添加localStorage监听器，监听模型相关事件
+  window.addEventListener('storage', (event) => {
+    const modelEvents = ['modelUploaded', 'modelUpdated', 'modelDeleted', 'modelConverted']
+    if (modelEvents.includes(event.key)) {
+      try {
+        const data = JSON.parse(event.newValue || '{}')
+        // 如果事件涉及的项目与当前选中的项目匹配，刷新模型列表
+        if (data.projectId === selectedProjectId.value) {
+          getModels(selectedProjectId.value)
+        }
+      } catch (error) {
+        console.error(`解析模型${event.key}事件失败:`, error)
+      }
+    }
+  })
+  
+  // 添加定时自动刷新模型列表（每30秒）
+  refreshTimer.value = setInterval(() => {
+    if (selectedProjectId.value) {
+      getModels(selectedProjectId.value)
+    }
+  }, 30000)
+  
   // 监听视图切换
   watch(currentView, (newView) => {
     if (newView !== '2d' && selectedModel.value) {
@@ -465,6 +390,15 @@ onMounted(() => {
   onUnmounted(() => {
     cleanupThreeJs()
     window.removeEventListener('resize', handleWindowResize)
+    // 清理定时器
+    if (refreshTimer.value) {
+      clearInterval(refreshTimer.value)
+      refreshTimer.value = null
+    }
+    // 清理localStorage监听器
+    window.removeEventListener('storage', (event) => {
+      // 监听器函数被移除，无需具体实现
+    })
   })
 })
 
@@ -490,7 +424,11 @@ const getProjects = async () => {
     }
   } catch (error) {
     console.error('获取项目列表失败:', error)
-    ElMessage.error('获取项目列表失败')
+    ElMessage.error({
+      message: '获取项目列表失败，请稍后重试',
+      duration: 3000,
+      type: 'error'
+    })
   }
 }
 
@@ -500,18 +438,39 @@ const getFloors = async (projectId) => {
     floors.value = response
   } catch (error) {
     console.error('获取楼层列表失败:', error)
-    ElMessage.error('获取楼层列表失败')
+    ElMessage.error({
+      message: '获取楼层列表失败，请稍后重试',
+      duration: 3000,
+      type: 'error'
+    })
     floors.value = [] // 发生错误时确保floors是数组
   }
 }
 
 const getModels = async (projectId) => {
   try {
+    if (!projectId) {
+      models.value = []
+      return
+    }
+    
     const response = await api.bimModel.getBIMModels({ projectId }) // 正确，传入对象
-    models.value = response
+    models.value = Array.isArray(response) ? response : []
+    
+    // 如果当前选中的模型不在列表中，清空选中状态
+    if (selectedModel.value && !models.value.find(m => m.id === selectedModel.value.id)) {
+      selectedModel.value = null
+      modelFile.value = null
+      isBimModelLoaded.value = false
+      selectedModelId.value = ''
+    }
   } catch (error) {
     console.error('获取模型列表失败:', error)
-    ElMessage.error('获取模型列表失败')
+    ElMessage.error({
+      message: '获取模型列表失败，请稍后重试',
+      duration: 3000,
+      type: 'error'
+    })
     models.value = [] // 发生错误时确保models是数组
   }
 }
@@ -529,7 +488,11 @@ const getEmbeddedParts = async (projectId, floorId = '') => {
     embeddedParts.value = Array.isArray(response) ? response : []
   } catch (error) {
     console.error('获取预埋件列表失败:', error)
-    ElMessage.error('获取预埋件列表失败')
+    ElMessage.error({
+      message: '获取预埋件列表失败，请稍后重试',
+      duration: 3000,
+      type: 'error'
+    })
     // 发生错误时也确保embeddedParts是数组
     embeddedParts.value = []
   }
@@ -537,24 +500,88 @@ const getEmbeddedParts = async (projectId, floorId = '') => {
 
 const getModelFile = async (modelId) => {
   try {
-    const model = models.value.find(m => m.id === modelId)
-    if (model) {
-      selectedModel.value = model
-      selectedEmbeddedPart.value = null
-      
-      // 从服务器加载模型文件 - 优先使用轻量化版本
-      const response = await api.bimModel.downloadBIMModel(modelId, model.isLightweight)
-      
-      // 创建临时URL用于CAD-Viewer
-      const blob = new Blob([response], { type: 'application/octet-stream' })
-      modelFile.value = URL.createObjectURL(blob)
-      
-      // 加载该模型下的预埋件
-      await getEmbeddedParts(selectedProjectId.value, selectedFloorId.value)
+    // 验证modelId
+    if (!modelId) {
+      throw new Error('模型ID不能为空')
     }
+    
+    const model = models.value.find(m => m.id === modelId)
+    if (!model) {
+      throw new Error('未找到指定模型')
+    }
+    
+    selectedModel.value = model
+    selectedEmbeddedPart.value = null
+    isBimModelLoaded.value = false
+    
+    // 释放之前的模型文件URL，防止内存泄漏
+    if (modelFile.value) {
+      URL.revokeObjectURL(modelFile.value)
+      modelFile.value = null
+    }
+    
+    // 显示加载中提示
+    const loadingMessage = ElMessage({
+      message: '正在加载模型文件...',
+      duration: 0,
+      type: 'info'
+    })
+    
+    // 从服务器加载模型文件 - 优先使用轻量化版本
+    const response = await api.bimModel.downloadBIMModel(modelId, model.isLightweight)
+    
+    // 验证响应
+    if (!response) {
+      throw new Error('服务器返回空响应')
+    }
+    
+    // 创建blob并验证大小
+    const blob = new Blob([response], { type: 'application/octet-stream' })
+    if (blob.size === 0) {
+      throw new Error('服务器返回空文件')
+    }
+    
+    // 创建临时URL用于CAD-Viewer
+    modelFile.value = URL.createObjectURL(blob)
+    
+    // 加载该模型下的预埋件
+    await getEmbeddedParts(selectedProjectId.value, selectedFloorId.value)
+    
+    // 关闭加载提示
+    loadingMessage.close()
   } catch (error) {
     console.error('获取模型文件失败:', error)
-    ElMessage.error('获取模型文件失败')
+    
+    // 关闭任何可能存在的加载提示
+    if (ElMessage.closeAll) {
+      ElMessage.closeAll()
+    }
+    
+    // 显示详细的错误信息
+    let errorMsg = '获取模型文件失败，请稍后重试'
+    if (error.message) {
+      errorMsg = `获取模型文件失败: ${error.message}`
+    } else if (error.response?.status === 404) {
+      errorMsg = '未找到模型文件或模型不存在'
+    } else if (error.response?.data?.message) {
+      errorMsg = `获取模型文件失败: ${error.response.data.message}`
+    } else if (error.response?.status) {
+      errorMsg = `获取模型文件失败: 服务器错误 ${error.response.status}`
+    }
+    
+    ElMessage.error({
+      message: errorMsg,
+      duration: 3000,
+      type: 'error'
+    })
+    
+    // 重置模型状态并清理资源
+    selectedModel.value = null
+    if (modelFile.value) {
+      URL.revokeObjectURL(modelFile.value)
+      modelFile.value = null
+    }
+    isBimModelLoaded.value = false
   }
 }
 
@@ -590,88 +617,7 @@ const handleStatusFilterChange = () => {
   // 筛选状态变化时自动更新列表
 }
 
-// 上传相关方法
-const handleFileChange = (file, fileList) => {
-  // 处理文件选择
-  uploadFile.value = file.raw
-  uploadForm.file = file.raw
-}
 
-const submitUpload = async () => {
-  if (!uploadFormRef.value) return
-  
-  // 表单验证
-  await uploadFormRef.value.validate().then(async () => {
-    isUploading.value = true
-    uploadProgress.value = 0
-    
-    try {
-      // 创建FormData对象
-      const formData = new FormData()
-      formData.append('name', uploadForm.name)
-      formData.append('modelType', uploadForm.modelType)
-      formData.append('projectId', uploadForm.projectId)
-      formData.append('isLightweight', uploadForm.isLightweight)
-      formData.append('file', uploadFile.value)
-      
-      // 模拟上传进度
-      const progressInterval = setInterval(() => {
-        uploadProgress.value += 10
-        if (uploadProgress.value >= 100) {
-          clearInterval(progressInterval)
-        }
-      }, 200)
-      
-      // 调用上传API
-      await api.bimModel.uploadBIMModel(formData)
-      
-      // 清除进度模拟
-      clearInterval(progressInterval)
-      uploadProgress.value = 100
-      
-      // 上传成功，更新模型列表
-      await getModels(uploadForm.projectId)
-      
-      // 关闭对话框
-      showUploadDialog.value = false
-      
-      // 显示成功消息
-      ElMessage.success('模型上传成功')
-      
-      // 重置表单
-      resetUploadForm()
-    } catch (error) {
-      console.error('模型上传失败:', error)
-      ElMessage.error('模型上传失败')
-    } finally {
-      isUploading.value = false
-    }
-  }).catch((error) => {
-    console.error('表单验证失败:', error)
-    ElMessage.error('表单验证失败，请检查填写内容')
-  })
-}
-
-const cancelUpload = () => {
-  showUploadDialog.value = false
-  resetUploadForm()
-}
-
-const resetUploadForm = () => {
-  if (uploadFormRef.value) {
-    uploadFormRef.value.resetFields()
-  }
-  uploadFile.value = null
-  uploadProgress.value = 0
-  fileList.value = []
-  Object.assign(uploadForm, {
-    name: '',
-    modelType: '3d',
-    projectId: '',
-    isLightweight: true,
-    file: null
-  })
-}
 
 // 查看器相关方法
 const onViewerLoaded = () => {
@@ -709,7 +655,7 @@ const onViewerClick = (event) => {
         highlightEmbeddedPart(clickedEmbeddedPart)
         
         // 如果启用了坐标同步，在3D视图中高亮对应位置
-        if (enableCoordinateSync && bimViewerRef.value) {
+        if (enableCoordinateSync.value && bimViewerRef.value) {
           highlightInBimViewer(clickedEmbeddedPart)
         }
       }
@@ -729,7 +675,7 @@ const highlightEmbeddedPart = (embeddedPart) => {
   }
   
   // 如果启用了坐标同步，在3D视图中高亮
-  if (enableCoordinateSync && bimViewerRef.value) {
+  if (enableCoordinateSync.value && bimViewerRef.value) {
     highlightInBimViewer(embeddedPart)
   }
 }
@@ -1206,7 +1152,8 @@ const highlightInBimViewer = (embeddedPart) => {
   gap: 20px;
 }
 
-.project-select {
+.project-select,
+.model-select {
   width: 200px;
 }
 

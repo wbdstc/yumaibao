@@ -46,17 +46,20 @@ const upload = (0, multer_1.default)({ storage });
 const router = (0, express_1.Router)();
 // 模型管理路由
 router.get('/', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), ModelController_1.default.getAllModels);
+// 按项目和楼层获取模型
+router.get('/project/:projectId', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController_1.default.getAllModels);
+router.get('/project/:projectId/floor/:floorId', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController_1.default.getAllModels);
+// IFC转换相关路由 - 更具体的路由先匹配
+router.post('/:id/convert', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), ModelController_1.default.convertIFCModel);
+// 文件下载 - 更具体的路由先匹配
+router.get('/:id/download', auth_1.default, ModelController_1.default.downloadModel);
+// 缩略图获取 - 更具体的路由先匹配
+router.get('/:id/thumbnail', auth_1.default, ModelController_1.default.getThumbnail);
+// 单个模型获取 - 动态参数路由最后匹配
 router.get('/:id', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController_1.default.getModelById);
 router.post('/', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), upload.single('file'), ModelController_1.default.uploadModel);
 router.put('/:id', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), ModelController_1.default.updateModel);
 router.delete('/:id', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin'), ModelController_1.default.deleteModel);
-// 按项目和楼层获取模型
-router.get('/project/:projectId', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController_1.default.getAllModels);
-router.get('/project/:projectId/floor/:floorId', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController_1.default.getAllModels);
-// 文件下载
-router.get('/:id/download', auth_1.default, ModelController_1.default.downloadModel);
-// 缩略图获取
-router.get('/:id/thumbnail', auth_1.default, ModelController_1.default.getThumbnail);
 // IFC转换相关路由
 router.post('/:id/convert', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer'), ModelController_1.default.convertIFCModel);
 router.get('/ifc/status', auth_1.default, ModelController_1.default.checkIFCConversionStatus);

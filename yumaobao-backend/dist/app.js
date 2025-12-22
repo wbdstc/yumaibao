@@ -52,8 +52,15 @@ async function startServer() {
         await (0, mongodb_1.connectToMongoDB)();
         console.log('MongoDB数据库连接成功');
         // 初始化MinIO存储桶
-        await (0, minio_1.ensureBucketsExist)();
-        console.log('MinIO存储桶初始化成功');
+        const minioInitResult = await (0, minio_1.ensureBucketsExist)();
+        if (!minioInitResult.success) {
+            console.error('MinIO存储桶初始化失败:', minioInitResult.message);
+            console.error('系统将继续运行，但部分功能可能不可用');
+            // 不要终止服务器，让系统在MinIO不可用时仍能运行基本功能
+        }
+        else {
+            console.log('MinIO存储桶初始化成功');
+        }
         // 启动服务器
         const PORT = process.env.PORT || 3000;
         app.listen(PORT, () => {

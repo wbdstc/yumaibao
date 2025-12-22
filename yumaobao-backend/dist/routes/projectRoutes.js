@@ -40,8 +40,8 @@ const express_1 = require("express");
 const ProjectController_1 = __importDefault(require("../controllers/ProjectController"));
 const auth_1 = __importStar(require("../middleware/auth"));
 const router = (0, express_1.Router)();
-// 项目管理路由 - 公开接口，供注册页面使用
-router.get('/', ProjectController_1.default.getAllProjects);
+// 项目管理路由 - 应用可选认证，支持未登录用户访问
+router.get('/', auth_1.default, ProjectController_1.default.getAllProjects);
 router.get('/:id', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ProjectController_1.default.getProjectById);
 router.post('/', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin'), ProjectController_1.default.createProject);
 router.put('/:id', auth_1.default, (0, auth_1.authorize)('projectManager', 'admin'), ProjectController_1.default.updateProject);

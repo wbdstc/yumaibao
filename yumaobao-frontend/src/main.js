@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { createI18n } from 'vue-i18n'
 import './style.css'
 import App from './App.vue'
 
@@ -17,12 +18,28 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 const app = createApp(App)
 
+// 导入语言文件
+import enLocale from './locales/en.json'
+import zhLocale from './locales/zh.json'
+
+// 创建并使用i18n实例
+const i18n = createI18n({
+  legacy: false,
+  locale: 'zh',
+  fallbackLocale: 'en',
+  messages: {
+    en: enLocale,
+    zh: zhLocale
+  }
+})
+
 // 注册Element Plus图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 
 // 使用插件
+app.use(i18n)
 app.use(router)
 app.use(pinia)
 app.use(ElementPlus)

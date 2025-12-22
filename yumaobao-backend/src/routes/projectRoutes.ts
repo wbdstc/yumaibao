@@ -4,8 +4,8 @@ import authenticate, { authorize } from '../middleware/auth';
 
 const router = Router();
 
-// 项目管理路由 - 公开接口，供注册页面使用
-router.get('/', ProjectController.getAllProjects);
+// 项目管理路由 - 应用可选认证，支持未登录用户访问
+router.get('/', authenticate, ProjectController.getAllProjects);
 router.get('/:id', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ProjectController.getProjectById);
 router.post('/', authenticate, authorize('projectManager', 'admin'), ProjectController.createProject);
 router.put('/:id', authenticate, authorize('projectManager', 'admin'), ProjectController.updateProject);

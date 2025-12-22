@@ -33,22 +33,38 @@ class UserModel {
     // 根据ID查找用户
     async findById(id) {
         const user = await this.getCollection().findOne({ id });
+        // 确保projects字段始终是数组
+        if (user && !user.projects) {
+            user.projects = [];
+        }
         return user;
     }
     // 根据邮箱查找用户
     async findByEmail(email) {
         const user = await this.getCollection().findOne({ email });
+        // 确保projects字段始终是数组
+        if (user && !user.projects) {
+            user.projects = [];
+        }
         return user;
     }
     // 根据手机号查找用户
     async findByPhone(phone) {
         const user = await this.getCollection().findOne({ phone });
+        // 确保projects字段始终是数组
+        if (user && !user.projects) {
+            user.projects = [];
+        }
         return user;
     }
     // 查找所有用户
     async findAll() {
         const users = await this.getCollection().find({}).toArray();
-        return users;
+        // 确保每个用户的projects字段始终是数组
+        return users.map(user => ({
+            ...user,
+            projects: user.projects || []
+        }));
     }
     // 更新用户信息
     async update(id, userData) {

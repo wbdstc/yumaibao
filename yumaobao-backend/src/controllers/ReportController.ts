@@ -224,7 +224,9 @@ class ReportController {
       // 生成Excel文件
       const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
       
-      res.setHeader('Content-Disposition', `attachment; filename=${project.name}_项目报告.xlsx`);
+      const excelFilename = `${project.name}_项目报告.xlsx`;
+      const encodedExcelFilename = encodeURIComponent(excelFilename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedExcelFilename}`);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       return res.send(excelBuffer);
     } catch (error) {
@@ -602,7 +604,9 @@ class ReportController {
       // 生成Word文档
       const buffer = await Packer.toBuffer(doc);
       
-      res.setHeader('Content-Disposition', `attachment; filename=${project.name}_项目报告.docx`);
+      const wordFilename = `${project.name}_项目报告.docx`;
+      const encodedWordFilename = encodeURIComponent(wordFilename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedWordFilename}`);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       return res.send(buffer);
     } catch (error) {
@@ -746,7 +750,9 @@ class ReportController {
       // 关闭浏览器
       await browser.close();
       
-      res.setHeader('Content-Disposition', `attachment; filename=${project.name}_项目报告.pdf`);
+      const pdfFilename = `${project.name}_项目报告.pdf`;
+      const encodedPdfFilename = encodeURIComponent(pdfFilename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedPdfFilename}`);
       res.setHeader('Content-Type', 'application/pdf');
       return res.send(pdfBuffer);
     } catch (error) {

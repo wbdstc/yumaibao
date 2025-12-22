@@ -50,43 +50,76 @@ api.interceptors.request.use(
   }
 )
 
-// 响应拦截器 - 保持不变
+// 响应拦截器 - 修复404错误处理和blob响应
 api.interceptors.response.use(
   response => {
-    // 对响应数据做点什么，直接返回响应体
+    // 如果是blob类型，检查响应状态码再返回
+    if (response.config.responseType === 'blob') {
+      // 如果响应状态码不是2xx，抛出错误
+      if (response.status < 200 || response.status >= 300) {
+        // 创建错误对象
+        const error = new Error(`Request failed with status code ${response.status}`)
+        error.response = response
+        return Promise.reject(error)
+      }
+      return response.data
+    }
+    // 对普通响应数据，直接返回响应体
     return response.data
   },
   error => {
     // 对响应错误做点什么
     console.error('响应拦截器：捕获到错误', error.message)
     
+    // 添加详细的错误日志
+    if (error.config) {
+      console.error('请求URL:', error.config.url)
+      console.error('请求方法:', error.config.method)
+      console.error('请求参数:', error.config.params || error.config.data)
+    }
+    
     if (error.response) {
       console.error('响应拦截器：错误响应状态', error.response.status)
       console.error('响应拦截器：错误响应数据', error.response.data)
+      
+      let errorMessage = '请求失败，请稍后重试'
       
       switch (error.response.status) {
         case 401:
           // 未授权，添加更详细的日志
           console.error('响应拦截器：401未授权错误，当前token', localStorage.getItem('token') ? localStorage.getItem('token').substring(0, 20) + '...' : 'null')
+          errorMessage = '登录已过期，请重新登录'
           // 延迟清除token和跳转到登录页，以便查看日志
           setTimeout(() => {
             const userStore = useUserStore() // 在这里使用是安全的
             userStore.logout()
             router.push('/login')
-            ElMessage.error('登录已过期，请重新登录')
+            ElMessage.error(errorMessage)
           }, 1000)
           break
         case 403:
-          ElMessage.error('没有权限访问此资源')
+          errorMessage = '没有权限访问此资源'
+          ElMessage.error(errorMessage)
           break
         case 404:
-          ElMessage.error('请求的资源不存在')
+          // 更详细的404错误信息
+          if (error.config.url && error.config.url.includes('downloadBIMModel')) {
+            errorMessage = '模型文件不存在或已被删除'
+          } else {
+            errorMessage = '请求的资源不存在'
+          }
+          ElMessage.error(errorMessage)
           break
         case 500:
-          ElMessage.error('服务器内部错误')
+          errorMessage = '服务器内部错误'
+          if (error.response.data && error.response.data.message) {
+            errorMessage = `服务器错误：${error.response.data.message}`
+          }
+          ElMessage.error(errorMessage)
           break
         default:
-          ElMessage.error(`请求错误：${error.response.data.message || '未知错误'}`)
+          errorMessage = `请求错误：${error.response.data?.message || error.response.statusText || '未知错误'}`
+          ElMessage.error(errorMessage)
       }
     } else if (error.request) {
       // 请求已发出，但没有收到响应

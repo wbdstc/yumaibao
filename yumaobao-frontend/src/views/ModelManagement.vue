@@ -279,15 +279,15 @@ function handleFileUpload(file) {
 
 async function submitUpload() {
   if (!uploadForm.value.name) {
-    ElMessage.warning('请输入模型名称')
+    ElMessage.warning({ message: '请输入模型名称', duration: 3000 })
     return
   }
   if (!uploadForm.value.floorId) {
-    ElMessage.warning('请选择楼层')
+    ElMessage.warning({ message: '请选择楼层', duration: 3000 })
     return
   }
   if (!uploadForm.value.file) {
-    ElMessage.warning('请选择模型文件')
+    ElMessage.warning({ message: '请选择模型文件', duration: 3000 })
     return
   }
 
@@ -300,11 +300,33 @@ async function submitUpload() {
     formData.append('file', uploadForm.value.file)
 
     await uploadModel(formData)
-    ElMessage.success('模型上传成功')
+    
+    // 上传成功，更新模型列表
+    await loadModels()
+    
+    // 使用localStorage触发其他页面的自动刷新
+    localStorage.setItem('modelUploaded', JSON.stringify({ 
+      projectId: uploadForm.value.projectId, 
+      timestamp: Date.now() 
+    }))
+    
+    ElMessage.success({ 
+      message: '模型上传成功', 
+      duration: 3000 
+    })
     uploadDialogVisible.value = false
-    loadModels()
   } catch (error) {
-    ElMessage.error('模型上传失败: ' + error.message)
+    console.error('模型上传失败:', error)
+    let errorMsg = '模型上传失败'
+    if (error.message) {
+      errorMsg = `模型上传失败: ${error.message}`
+    } else if (error.response?.data?.message) {
+      errorMsg = `模型上传失败: ${error.response.data.message}`
+    }
+    ElMessage.error({ 
+      message: errorMsg, 
+      duration: 3000 
+    })
   }
 }
 
@@ -318,31 +340,86 @@ function editModel(model) {
 
 async function submitEdit() {
   if (!editForm.value.name) {
-    ElMessage.warning('请输入模型名称')
+    ElMessage.warning({ message: '请输入模型名称', duration: 3000 })
     return
   }
   if (!editForm.value.floorId) {
-    ElMessage.warning('请选择楼层')
+    ElMessage.warning({ message: '请选择楼层', duration: 3000 })
     return
   }
 
   try {
+    const model = models.value.find(m => m.id === editForm.value.id)
     await updateModel(editForm.value.id, editForm.value)
-    ElMessage.success('模型更新成功')
+    
+    // 更新成功，刷新模型列表
+    await loadModels()
+    
+    // 使用localStorage触发其他页面的自动刷新
+    if (model) {
+      localStorage.setItem('modelUpdated', JSON.stringify({ 
+        projectId: model.projectId, 
+        timestamp: Date.now() 
+      }))
+      // 立即移除，避免重复触发
+      setTimeout(() => {
+        localStorage.removeItem('modelUpdated')
+      }, 100)
+    }
+    
+    ElMessage.success({ 
+      message: '模型更新成功', 
+      duration: 3000 
+    })
     editDialogVisible.value = false
-    loadModels()
   } catch (error) {
-    ElMessage.error('模型更新失败: ' + error.message)
+    console.error('模型更新失败:', error)
+    let errorMsg = '模型更新失败'
+    if (error.message) {
+      errorMsg = `模型更新失败: ${error.message}`
+    } else if (error.response?.data?.message) {
+      errorMsg = `模型更新失败: ${error.response.data.message}`
+    }
+    ElMessage.error({ 
+      message: errorMsg, 
+      duration: 3000 
+    })
   }
 }
 
 async function deleteModel(model) {
   try {
     await deleteModelApi(model.id)
-    ElMessage.success('模型删除成功')
-    loadModels()
+    
+    // 删除成功，刷新模型列表
+    await loadModels()
+    
+    // 使用localStorage触发其他页面的自动刷新
+    localStorage.setItem('modelDeleted', JSON.stringify({ 
+      projectId: model.projectId, 
+      timestamp: Date.now() 
+    }))
+    // 立即移除，避免重复触发
+    setTimeout(() => {
+      localStorage.removeItem('modelDeleted')
+    }, 100)
+    
+    ElMessage.success({ 
+      message: '模型删除成功', 
+      duration: 3000 
+    })
   } catch (error) {
-    ElMessage.error('模型删除失败: ' + error.message)
+    console.error('模型删除失败:', error)
+    let errorMsg = '模型删除失败'
+    if (error.message) {
+      errorMsg = `模型删除失败: ${error.message}`
+    } else if (error.response?.data?.message) {
+      errorMsg = `模型删除失败: ${error.response.data.message}`
+    }
+    ElMessage.error({ 
+      message: errorMsg, 
+      duration: 3000 
+    })
   }
 }
 
@@ -353,8 +430,24 @@ async function convertIFCModel(model) {
       isLightweight: true,
       quality: 80
     })
-    ElMessage.success('IFC模型转换成功')
-    loadModels()
+    
+    // 转换成功，刷新模型列表
+    await loadModels()
+    
+    // 使用localStorage触发其他页面的自动刷新
+    localStorage.setItem('modelConverted', JSON.stringify({ 
+      projectId: model.projectId, 
+      timestamp: Date.now() 
+    }))
+    // 立即移除，避免重复触发
+    setTimeout(() => {
+      localStorage.removeItem('modelConverted')
+    }, 100)
+    
+    ElMessage.success({ 
+      message: 'IFC模型转换成功', 
+      duration: 3000 
+    })
   } catch (error) {
     // 提取更详细的错误信息
     let errorMsg = 'IFC模型转换失败'
@@ -380,7 +473,10 @@ async function convertIFCModel(model) {
       errorMsg = `转换失败: ${error.message}`
     }
     
-    ElMessage.error(errorMsg)
+    ElMessage.error({ 
+      message: errorMsg, 
+      duration: 3000 
+    })
   }
 }
 </script>
