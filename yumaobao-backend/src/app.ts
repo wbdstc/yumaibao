@@ -46,8 +46,21 @@ app.use('/api/embedded-parts', embeddedPartRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/reports', reportRoutes);
 
+// 设置MIME类型映射
+app.use((req, res, next) => {
+  // 确保JavaScript文件（包括worker文件）返回正确的MIME类型
+  if (req.url.endsWith('.js') || req.url.endsWith('.worker.js')) {
+    res.setHeader('Content-Type', 'application/javascript');
+  }
+  next();
+});
+
 // 静态文件服务
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// 前端静态文件服务 - 确保所有静态文件都能被正确访问
+app.use(express.static(path.join(__dirname, '../../yumaobao-frontend/dist')));
+// 特别处理assets目录，确保worker文件能被正确访问
+app.use('/assets', express.static(path.join(__dirname, '../../yumaobao-frontend/dist/assets')));
 
 // 数据库连接和同步
 async function startServer() {

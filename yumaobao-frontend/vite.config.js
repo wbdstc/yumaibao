@@ -31,7 +31,37 @@ export default defineConfig({
       'image/jpeg': ['jpg', 'jpeg'],
       'image/gif': ['gif'],
       'image/x-icon': ['ico']
-    }
+    },
+    // 添加中间件确保worker文件被正确提供
+    middleware: [
+      function (req, res, next) {
+        // 如果请求的是worker文件，确保从node_modules目录提供
+        if (req.url.includes('mtext-renderer-worker.js') || req.url.includes('libredwg-parser-worker.js') || req.url.includes('dxf-parser-worker.js')) {
+          const fs = require('fs');
+          const path = require('path');
+          
+          // 构建worker文件的完整路径
+          let workerPath;
+          if (req.url.includes('mtext-renderer-worker.js')) {
+            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'cad-simple-viewer', 'dist', 'mtext-renderer-worker.js');
+          } else if (req.url.includes('libredwg-parser-worker.js')) {
+            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'cad-simple-viewer', 'dist', 'libredwg-parser-worker.js');
+          } else if (req.url.includes('dxf-parser-worker.js')) {
+            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'data-model', 'dist', 'dxf-parser-worker.js');
+          }
+          
+          if (workerPath && fs.existsSync(workerPath)) {
+            // 设置正确的MIME类型
+            res.setHeader('Content-Type', 'application/javascript');
+            // 读取并返回文件内容
+            const content = fs.readFileSync(workerPath);
+            res.end(content);
+            return;
+          }
+        }
+        next();
+      }
+    ]
   },
   resolve: {
     alias: {
@@ -56,7 +86,9 @@ export default defineConfig({
             const workerPaths = [
               './node_modules/@mlightcad/cad-simple-viewer/dist',
               './node_modules/@mlightcad/data-model/dist',
-              './node_modules/@mlightcad/cad-viewer/dist'
+              './node_modules/@mlightcad/cad-viewer/dist',
+              './node_modules/@mlightcad/mtext-renderer/dist',
+              './node_modules/@mlightcad/three-renderer/dist'
             ];
             const distDir = path.join(__dirname, 'dist', 'assets');
             

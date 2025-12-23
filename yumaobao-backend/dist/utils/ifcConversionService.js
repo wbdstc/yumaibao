@@ -171,11 +171,13 @@ class IFCConversionService {
                     message: `获取文件大小失败: ${statError.message}`
                 };
             }
-            // 上传转换后的文件到MinIO
+            // 上传转换后的文件到MinIO，使用原始文件名（无_converted后缀）
             let outputUrl, objectName;
             try {
+                const originalFileName = path_1.default.basename(params.inputFile, path_1.default.extname(params.inputFile));
+                const convertedFileName = `${originalFileName}.${params.outputFormat}`;
                 const uploadResult = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.MODELS, {
-                    originalname: path_1.default.basename(outputFile),
+                    originalname: convertedFileName,
                     buffer: fs_1.default.readFileSync(outputFile),
                     size: convertedStats.size,
                     mimetype: this.getMimeType(params.outputFormat)
@@ -231,7 +233,8 @@ class IFCConversionService {
         if (!fs_1.default.existsSync(tempDir)) {
             fs_1.default.mkdirSync(tempDir, { recursive: true });
         }
-        return path_1.default.join(tempDir, `${baseName}_converted.${outputFormat}`);
+        // 直接使用原始文件名（无_converted后缀）
+        return path_1.default.join(tempDir, `${baseName}.${outputFormat}`);
     }
     // 获取MIME类型
     getMimeType(format) {

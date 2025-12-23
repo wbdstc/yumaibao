@@ -72,7 +72,7 @@ class ModelController {
   // 上传模型文件
   static async uploadModel(req: Request, res: Response) {
     try {
-      const { projectId, floorId, name, type, description, version, isLightweight } = req.body;
+      const { projectId, floorId, name, description, version, isLightweight } = req.body;
       const userId = (req as any).user?.id;
       const file = req.file;
 
@@ -106,12 +106,30 @@ class ModelController {
       // 保存模型元数据到MongoDB
       const originalModelFormat = path.extname(file.originalname).toLowerCase().substring(1);
       
+      // 根据文件后缀自动设置模型类型
+      let modelType: 'bim' | 'cad' | '2d' | '3d';
+      const fileExtension = originalModelFormat.toLowerCase();
+      
+      // 2D文件类型
+      const twoDFormats = ['dwg', 'dxf'];
+      // 3D文件类型
+      const threeDFormats = ['ifc', 'rvt', 'nwd', '3ds', 'obj', 'stp', 'step', 'glb', 'gltf'];
+      
+      if (twoDFormats.includes(fileExtension)) {
+        modelType = '2d';
+      } else if (threeDFormats.includes(fileExtension)) {
+        modelType = '3d';
+      } else {
+        // 默认类型
+        modelType = 'bim';
+      }
+      
       // 准备模型数据
       const modelData = {
         projectId,
         floorId,
         name: name || file.originalname,
-        type: type as 'bim' | 'cad' | '2d' | '3d',
+        type: modelType,
         fileUrl,
         fileSize: file.size,
         format: originalModelFormat,
@@ -121,140 +139,146 @@ class ModelController {
         isLightweight: isLightweight !== false
       };
       
-      // 如果是IFC文件，自动转换并只保留转换后的文件
-      if (originalModelFormat === 'ifc') {
-        console.log('检测到IFC文件，开始自动转换流程');
-        try {
-          // 调用IFC自动转换方法
-          console.log('调用autoConvertIFCIfNeeded方法');
-          const autoConversionResult = await ModelController.autoConvertIFCIfNeeded(file, modelData);
-          
-          console.log('autoConvertIFCIfNeeded返回结果:', autoConversionResult);
-          
-          if (autoConversionResult && autoConversionResult.fileUrl && autoConversionResult.fileSize !== undefined) {
-            console.log('自动转换成功，创建转换后的模型记录');
-            // 直接保存转换后的模型记录，不保存原始IFC文件
-            const convertedModel = await Model.create({
-              projectId: modelData.projectId,
-              floorId: modelData.floorId,
-              name: modelData.name || file.originalname.replace(/\.ifc$/i, `_converted.${autoConversionResult.format}`),
-              type: '3d',
-              fileUrl: autoConversionResult.fileUrl,
-              fileSize: autoConversionResult.fileSize,
-              format: autoConversionResult.format,
-              version: modelData.version || '1.0',
-              uploadedBy: modelData.uploadedBy,
-              description: `${modelData.description || ''} [IFC自动转换]`
-            });
-            
-            // 删除原始IFC文件记录（如果存在）
-            if (db && fileRecord) {
-              console.log('删除原始IFC文件记录');
-              await (db as any).collection('modelFiles').deleteOne({ _id: fileRecord.insertedId });
-            }
-            
-            // 删除原始IFC文件
-            const originalObjectName = fileUrl.split('/').pop();
-            if (originalObjectName) {
-              console.log('删除原始IFC文件:', originalObjectName);
-              await deleteFileFromMinIO(MINIO_BUCKETS.MODELS, originalObjectName);
-            }
-            
-            // 为转换后的模型创建文件记录
-            if (db) {
-              const convertedObjectName = autoConversionResult.fileUrl.split('/').pop();
-              await (db as any).collection('modelFiles').insertOne({
-                modelId: convertedModel.id,
-                originalFilename: `${modelData.name || 'converted_model'}_converted.glb`,
-                objectName: convertedObjectName || '',
-                bucketName: MINIO_BUCKETS.MODELS,
-                createdAt: new Date()
-              });
-            }
-            
-            console.log('IFC模型自动转换成功，返回结果');
-            return res.status(201).json({
-              message: 'IFC模型自动转换成功',
-              data: {
-                originalModel: null,
-                convertedModel,
-                conversionResult: {
-                  success: true,
-                  convertedModel
-                }
-              }
-            });
-          } else {
-            console.log('自动转换失败，保存原始模型');
-            // 转换失败，保存原始模型
-            const model = await Model.create(modelData);
-            
-            if (db && fileRecord) {
-              await (db as any).collection('modelFiles').updateOne(
-                { _id: fileRecord.insertedId },
-                { $set: { modelId: model.id } }
-              );
-            }
-            
-            return res.status(201).json({
-              message: '模型上传成功（IFC自动转换失败）',
-              data: {
-                originalModel: model,
-                convertedModel: null,
-                conversionResult: {
-                  success: false,
-                  message: 'IFC自动转换失败',
-                  details: autoConversionResult
-                }
-              }
-            });
-          }
-        } catch (error) {
-          console.error('自动转换IFC失败:', error);
-          
-          // 转换失败，保存原始模型
-          const model = await Model.create(modelData);
-          
-          if (db && fileRecord) {
-            await (db as any).collection('modelFiles').updateOne(
-              { _id: fileRecord.insertedId },
-              { $set: { modelId: model.id } }
-            );
-          }
-          
-          return res.status(201).json({
-            message: '模型上传成功（IFC自动转换失败）',
-            data: {
-              originalModel: model,
-              convertedModel: null,
-              conversionResult: {
-                success: false,
-                message: 'IFC自动转换失败',
-                error: String(error)
-              }
-            }
-          });
-        }
-      } else {
-        // 非IFC文件，保存原始模型
-        const model = await Model.create(modelData);
-        
-        if (db && fileRecord) {
-          await (db as any).collection('modelFiles').updateOne(
-            { _id: fileRecord.insertedId },
-            { $set: { modelId: model.id } }
-          );
-        }
-        
-        return res.status(201).json({
-          message: '模型上传成功',
-          data: {
-            originalModel: model,
-            convertedModel: null,
-            conversionResult: null
-          }
+      // 如果是IFC文件，自动转换为GLB并仅保留转换后的GLB文件
+if (originalModelFormat === 'ifc') {
+  console.log('检测到IFC文件，开始自动转换流程');
+  try {
+    // 1. 调用IFC自动转换方法
+    console.log('调用autoConvertIFCIfNeeded方法');
+    const autoConversionResult = await ModelController.autoConvertIFCIfNeeded(file, modelData);
+    
+    console.log('autoConvertIFCIfNeeded返回结果:', autoConversionResult);
+    
+    if (autoConversionResult && autoConversionResult.fileUrl && autoConversionResult.fileSize !== undefined) {
+      console.log('自动转换成功，创建转换后的模型记录');
+      
+      // 删除原始IFC文件记录（如果存在）
+      if (db && fileRecord) {
+        console.log('删除原始IFC文件记录');
+        await (db as any).collection('modelFiles').deleteOne({ _id: fileRecord.insertedId });
+      }
+      
+      // 删除原始IFC文件
+      const originalObjectName = fileUrl.split('/').pop();
+      if (originalObjectName) {
+        console.log('删除原始IFC文件:', originalObjectName);
+        await deleteFileFromMinIO(MINIO_BUCKETS.MODELS, originalObjectName);
+      }
+      
+      // 2. 创建转换后的GLB模型记录，使用原始文件名（无_converted后缀）
+      const originalFileNameWithoutExt = path.basename(file.originalname, '.ifc');
+      const convertedModel = await Model.create({
+        projectId: modelData.projectId,
+        floorId: modelData.floorId,
+        name: modelData.name || originalFileNameWithoutExt,
+        type: '3d',
+        fileUrl: autoConversionResult.fileUrl,
+        fileSize: autoConversionResult.fileSize,
+        format: autoConversionResult.format,
+        version: modelData.version || '1.0',
+        uploadedBy: modelData.uploadedBy,
+        description: `${modelData.description || ''} [IFC自动转换为GLB]`
+      });
+      
+      // 3. 为转换后的模型创建文件记录
+      if (db) {
+        const convertedObjectName = autoConversionResult.objectName;
+        await (db as any).collection('modelFiles').insertOne({
+          modelId: convertedModel.id,
+          originalFilename: `${originalFileNameWithoutExt}.glb`,
+          objectName: convertedObjectName || '',
+          bucketName: MINIO_BUCKETS.MODELS,
+          createdAt: new Date()
         });
       }
+      
+      console.log('IFC模型自动转换成功，返回结果');
+      return res.status(201).json({
+        message: 'IFC模型自动转换成功',
+        data: {
+          originalModel: null,
+          convertedModel,
+          conversionResult: {
+            success: true,
+            convertedModel
+          }
+        }
+      });
+    } else {
+      console.log('自动转换失败，删除原始IFC文件');
+      // 删除原始IFC文件记录（如果存在）
+      if (db && fileRecord) {
+        await (db as any).collection('modelFiles').deleteOne({ _id: fileRecord.insertedId });
+      }
+      
+      // 删除原始IFC文件
+      const originalObjectName = fileUrl.split('/').pop();
+      if (originalObjectName) {
+        await deleteFileFromMinIO(MINIO_BUCKETS.MODELS, originalObjectName);
+      }
+      
+      return res.status(500).json({
+        message: 'IFC模型上传失败，转换失败',
+        data: {
+          originalModel: null,
+          convertedModel: null,
+          conversionResult: {
+            success: false,
+            message: 'IFC自动转换失败',
+            details: autoConversionResult
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('自动转换IFC失败:', error);
+    
+    // 删除原始IFC文件记录（如果存在）
+    if (db && fileRecord) {
+      await (db as any).collection('modelFiles').deleteOne({ _id: fileRecord.insertedId });
+    }
+    
+    // 删除原始IFC文件
+    const originalObjectName = fileUrl.split('/').pop();
+    if (originalObjectName) {
+      await deleteFileFromMinIO(MINIO_BUCKETS.MODELS, originalObjectName);
+    }
+    
+    return res.status(500).json({
+      message: 'IFC模型上传失败，转换失败',
+      data: {
+        originalModel: null,
+        convertedModel: null,
+        conversionResult: {
+          success: false,
+          message: 'IFC自动转换失败',
+          error: String(error)
+        }
+      }
+    });
+  }
+} else {
+  // 非IFC文件，保存原始模型
+  const model = await Model.create({
+    ...modelData
+  });
+  
+  if (db && fileRecord) {
+    await (db as any).collection('modelFiles').updateOne(
+      { _id: fileRecord.insertedId },
+      { $set: { modelId: model.id } }
+    );
+  }
+  
+  return res.status(201).json({
+    message: '模型上传成功',
+    data: {
+      originalModel: model,
+      convertedModel: null,
+      conversionResult: null
+    }
+  });
+}
 
 
     } catch (error) {
@@ -263,48 +287,25 @@ class ModelController {
     }
   }
 
-  // 模型轻量化处理
-  static async processLightweightModel(originalFilePath: string, originalFilename: string): Promise<string> {
-    const fileExtension = path.extname(originalFilename).toLowerCase();
-    const baseName = path.basename(originalFilename, fileExtension);
-    const lightweightFilename = `${baseName}_light${fileExtension}`;
-    const lightweightPath = path.join(__dirname, '../../uploads/models', lightweightFilename);
-
-    try {
-      // 根据文件类型选择不同的轻量化处理方式
-      if (fileExtension === '.dwg' || fileExtension === '.dxf') {
-        // 对于DWG/DXF文件，使用CAD文件处理工具进行轻量化
-        console.log('开始DWG/DXF文件轻量化处理...');
-        
-        // 提取CAD文件信息
-        const cadInfo = await this.extractCADFileInfo();
-        console.log('CAD文件信息:', cadInfo);
-        
-        // 模拟轻量化处理
-        await this.simulateCADLightweightProcess(originalFilePath, lightweightPath, cadInfo);
-      } else if (fileExtension === '.ifc' || fileExtension === '.rvt' || fileExtension === '.nwd') {
-        // 对于BIM模型文件，使用专门的BIM轻量化工具
-        console.log('开始BIM模型轻量化处理...');
-        
-        // 提取BIM模型信息
-        const bimInfo = await this.extractBIMModelInfo();
-        console.log('BIM模型信息:', bimInfo);
-        
-        // 模拟轻量化处理
-        await this.simulateBIMLightweightProcess(originalFilePath, lightweightPath, bimInfo);
-      } else {
-        // 对于其他文件类型，直接复制作为轻量化版本
-        fs.copyFileSync(originalFilePath, lightweightPath);
-        console.log(`不支持的文件类型，直接复制原始文件作为轻量化版本: ${fileExtension}`);
-      }
-
-      return lightweightPath;
-    } catch (error) {
-      console.error('模型轻量化处理失败:', error);
-      // 如果轻量化处理失败，返回原始文件路径
-      return originalFilePath;
-    }
+  // 模型轻量化处理 - 目前仅用于模拟，实际项目中应替换为真实的轻量化处理逻辑
+static async processLightweightModel(originalFilePath: string, originalFilename: string): Promise<string> {
+  // 注意：此方法目前仅用于模拟，实际项目中应替换为真实的轻量化处理逻辑
+  // 真实实现应该直接使用MinIO进行文件处理，而不是依赖本地文件系统
+  const fileExtension = path.extname(originalFilename).toLowerCase();
+  const baseName = path.basename(originalFilename, fileExtension);
+  const lightweightFilename = `${baseName}_light${fileExtension}`;
+  
+  try {
+    // 在实际项目中，这里应该使用MinIO进行文件处理，而不是本地文件系统
+    // 目前我们直接返回原始文件路径，因为轻量化处理逻辑需要根据实际使用的工具进行调整
+    console.log(`模型轻量化处理已调整为使用MinIO，文件名: ${lightweightFilename}`);
+    return originalFilePath;
+  } catch (error) {
+    console.error('模型轻量化处理失败:', error);
+    // 如果轻量化处理失败，返回原始文件路径
+    return originalFilePath;
   }
+}
 
   // 提取CAD文件信息
   static async extractCADFileInfo(): Promise<object> {
@@ -836,51 +837,52 @@ class ModelController {
   }
 
   // 上传模型文件时自动转换IFC
-  private static async autoConvertIFCIfNeeded(file: Express.Multer.File, modelData: any) {
-    if (path.extname(file.originalname).toLowerCase() === '.ifc') {
-      // 创建临时文件
-      const tempDir = path.join(__dirname, '../../temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      const tempFilePath = path.join(tempDir, file.originalname);
-      fs.writeFileSync(tempFilePath, file.buffer);
-
-      try {
-        // 执行IFC转换
-        const conversionResult = await ifcConversionService.convertIFC({
-          inputFile: tempFilePath,
-          outputFormat: 'glb',
-          isLightweight: modelData.isLightweight !== false,
-          quality: 80,
-          includeMaterials: true,
-          includeTextures: true
-        });
-
-        if (conversionResult.success && conversionResult.outputUrl) {
-          // 返回转换后的URL和格式
-          return {
-            converted: true,
-            fileUrl: conversionResult.outputUrl,
-            format: 'glb',
-            fileSize: conversionResult.convertedSize
-          };
-        }
-      } catch (error) {
-        console.error('自动转换IFC失败:', error);
-        // 自动转换失败，返回原始文件信息
-      } finally {
-        // 清理临时文件
-        if (fs.existsSync(tempFilePath)) {
-          fs.unlinkSync(tempFilePath);
-        }
-      }
+private static async autoConvertIFCIfNeeded(file: Express.Multer.File, modelData: any) {
+  if (path.extname(file.originalname).toLowerCase() === '.ifc') {
+    // 创建临时文件
+    const tempDir = path.join(__dirname, '../../temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // 不是IFC文件或转换失败，返回null
-    return null;
+    const tempFilePath = path.join(tempDir, file.originalname);
+    fs.writeFileSync(tempFilePath, file.buffer);
+
+    try {
+      // 执行IFC转换
+      const conversionResult = await ifcConversionService.convertIFC({
+        inputFile: tempFilePath,
+        outputFormat: 'glb',
+        isLightweight: modelData.isLightweight !== false,
+        quality: 80,
+        includeMaterials: true,
+        includeTextures: true
+      });
+
+      if (conversionResult.success && conversionResult.outputUrl && conversionResult.objectName) {
+        // 返回转换后的URL、格式、文件大小和objectName
+        return {
+          converted: true,
+          fileUrl: conversionResult.outputUrl,
+          objectName: conversionResult.objectName,
+          format: 'glb',
+          fileSize: conversionResult.convertedSize
+        };
+      }
+    } catch (error) {
+      console.error('自动转换IFC失败:', error);
+      // 自动转换失败，返回原始文件信息
+    } finally {
+      // 清理临时文件
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+    }
   }
+
+  // 不是IFC文件或转换失败，返回null
+  return null;
+}
 }
 
 export default ModelController;

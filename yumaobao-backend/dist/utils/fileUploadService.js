@@ -7,82 +7,42 @@ exports.getPresignedUrl = exports.deleteFileFromMinIO = exports.downloadFileFrom
 const minio_1 = require("../config/minio");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-// 确保上传目录存在
-const ensureUploadDirExists = (dir) => {
-    if (!fs_1.default.existsSync(dir)) {
-        fs_1.default.mkdirSync(dir, { recursive: true });
-    }
-};
-// 文件上传到MinIO或本地文件系统
+// 文件上传到MinIO
 const uploadFileToMinIO = async (bucketName, file, objectName) => {
     try {
-        // 尝试使用MinIO上传
-        try {
-            // 检查存储桶是否存在
-            const bucketExists = await minio_1.minioClient.bucketExists(bucketName);
-            if (!bucketExists) {
-                // 创建存储桶
-                await minio_1.minioClient.makeBucket(bucketName, 'us-east-1');
-            }
-            // 生成唯一的对象名称
-            const uniqueObjectName = objectName || `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
-            const objectPath = `${path_1.default.extname(file.originalname).toLowerCase().substring(1)}/${uniqueObjectName}`;
-            // 上传文件到MinIO
-            await minio_1.minioClient.putObject(bucketName, objectPath, file.buffer || fs_1.default.createReadStream(file.path), file.size, { 'Content-Type': file.mimetype });
-            // 生成访问URL
-            const url = `${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${bucketName}/${objectPath}`;
-            return { url, objectName: objectPath };
+        // 检查存储桶是否存在
+        const bucketExists = await minio_1.minioClient.bucketExists(bucketName);
+        if (!bucketExists) {
+            // 创建存储桶
+            await minio_1.minioClient.makeBucket(bucketName, 'us-east-1');
         }
-        catch (minioError) {
-            console.error('MinIO上传失败，使用本地文件系统:', minioError);
-            // 使用本地文件系统作为后备
-            const uploadDir = path_1.default.join(__dirname, '../../uploads', bucketName);
-            ensureUploadDirExists(uploadDir);
-            const uniqueFileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
-            const filePath = path_1.default.join(uploadDir, uniqueFileName);
-            // 保存文件到本地
-            if (file.buffer) {
-                fs_1.default.writeFileSync(filePath, file.buffer);
-            }
-            else if (file.path) {
-                fs_1.default.copyFileSync(file.path, filePath);
-            }
-            else {
-                throw new Error('文件数据不可用');
-            }
-            // 生成本地访问URL
-            const url = `/uploads/${bucketName}/${uniqueFileName}`;
-            return { url, objectName: `local://${bucketName}/${uniqueFileName}` };
-        }
+        // 生成唯一的对象名称 - 保留原始文件名，不添加随机前缀，确保中文文件名正确处理
+        const fileNameWithoutExt = path_1.default.basename(file.originalname, path_1.default.extname(file.originalname));
+        const extName = path_1.default.extname(file.originalname).toLowerCase().substring(1);
+        const uniqueObjectName = objectName || `${fileNameWithoutExt}.${extName}`;
+        const objectPath = `${extName}/${uniqueObjectName}`;
+        // 上传文件到MinIO
+        await minio_1.minioClient.putObject(bucketName, objectPath, file.buffer || fs_1.default.createReadStream(file.path), file.size, { 'Content-Type': file.mimetype });
+        // 生成访问URL
+        const url = `${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${bucketName}/${objectPath}`;
+        return { url, objectName: objectPath };
     }
     catch (error) {
-        console.error('上传文件失败:', error);
+        console.error('上传文件到MinIO失败:', error);
         throw error;
     }
 };
 exports.uploadFileToMinIO = uploadFileToMinIO;
-// 从MinIO或本地文件系统下载文件
+// 从MinIO下载文件
 const downloadFileFromMinIO = async (bucketName, objectName) => {
     try {
-        // 检查是否为本地文件
-        if (objectName.startsWith('local://')) {
-            // 处理本地文件
-            const localPath = objectName.substring(8); // 移除 'local://' 前缀
-            const filePath = path_1.default.join(__dirname, '../../uploads', localPath);
-            if (!fs_1.default.existsSync(filePath)) {
-                throw new Error('本地文件不存在');
-            }
-            return fs_1.default.readFileSync(filePath);
+        // 处理MinIO文件
+        const stream = await minio_1.minioClient.getObject(bucketName, objectName);
+        const chunks = [];
+        for await (const chunk of stream) {
+            chunks.push(chunk);
         }
-        else {
-            // 处理MinIO文件
-            const stream = await minio_1.minioClient.getObject(bucketName, objectName);
-            const chunks = [];
-            for await (const chunk of stream) {
-                chunks.push(chunk);
-            }
-            return Buffer.concat(chunks);
-        }
+        return Buffer.concat(chunks);
     }
     catch (error) {
         console.error('下载文件失败:', error);
@@ -90,27 +50,16 @@ const downloadFileFromMinIO = async (bucketName, objectName) => {
     }
 };
 exports.downloadFileFromMinIO = downloadFileFromMinIO;
-// 从MinIO或本地文件系统删除文件
+// 从MinIO删除文件
 const deleteFileFromMinIO = async (bucketName, objectName) => {
     try {
-        // 检查是否为本地文件
-        if (objectName.startsWith('local://')) {
-            // 处理本地文件
-            const localPath = objectName.substring(8); // 移除 'local://' 前缀
-            const filePath = path_1.default.join(__dirname, '../../uploads', localPath);
-            if (fs_1.default.existsSync(filePath)) {
-                fs_1.default.unlinkSync(filePath);
-            }
+        // 处理MinIO文件
+        try {
+            await minio_1.minioClient.removeObject(bucketName, objectName);
         }
-        else {
-            // 处理MinIO文件
-            try {
-                await minio_1.minioClient.removeObject(bucketName, objectName);
-            }
-            catch (minioError) {
-                console.error('MinIO删除文件失败，可能服务未运行或连接失败:', minioError);
-                // 不抛出错误，继续执行后续逻辑
-            }
+        catch (minioError) {
+            console.error('MinIO删除文件失败:', minioError);
+            // 不抛出错误，避免影响主流程
         }
     }
     catch (error) {

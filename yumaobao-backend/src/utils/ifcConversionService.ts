@@ -219,28 +219,31 @@ class IFCConversionService {
         };
       }
 
-      // 上传转换后的文件到MinIO
-      let outputUrl, objectName;
-      try {
-        const uploadResult = await uploadFileToMinIO(
-          MINIO_BUCKETS.MODELS,
-          {
-            originalname: path.basename(outputFile),
-            buffer: fs.readFileSync(outputFile),
-            size: convertedStats.size,
-            mimetype: this.getMimeType(params.outputFormat)
-          } as Express.Multer.File
-        );
-        outputUrl = uploadResult.url;
-        objectName = uploadResult.objectName;
-        console.log(`${logPrefix} 文件上传成功，URL: ${outputUrl}`);
-      } catch (uploadError) {
-        console.error(`${logPrefix} 文件上传失败: ${(uploadError as Error).message}`);
-        return {
-          success: false,
-          message: `文件上传失败: ${(uploadError as Error).message}`
-        };
-      }
+      // 上传转换后的文件到MinIO，使用原始文件名（无_converted后缀）
+let outputUrl, objectName;
+try {
+  const originalFileName = path.basename(params.inputFile, path.extname(params.inputFile));
+  const convertedFileName = `${originalFileName}.${params.outputFormat}`;
+  
+  const uploadResult = await uploadFileToMinIO(
+    MINIO_BUCKETS.MODELS,
+    {
+      originalname: convertedFileName,
+      buffer: fs.readFileSync(outputFile),
+      size: convertedStats.size,
+      mimetype: this.getMimeType(params.outputFormat)
+    } as Express.Multer.File
+  );
+  outputUrl = uploadResult.url;
+  objectName = uploadResult.objectName;
+  console.log(`${logPrefix} 文件上传成功，URL: ${outputUrl}`);
+} catch (uploadError) {
+  console.error(`${logPrefix} 文件上传失败: ${(uploadError as Error).message}`);
+  return {
+    success: false,
+    message: `文件上传失败: ${(uploadError as Error).message}`
+  };
+}
 
       // 清理临时文件
       try {
@@ -278,17 +281,18 @@ class IFCConversionService {
 
 
   // 生成输出文件路径
-  private generateOutputFilePath(inputFile: string, outputFormat: string): string {
-    const baseName = path.basename(inputFile, path.extname(inputFile));
-    const tempDir = path.join(__dirname, '../../temp');
-    
-    // 确保临时目录存在
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    
-    return path.join(tempDir, `${baseName}_converted.${outputFormat}`);
+private generateOutputFilePath(inputFile: string, outputFormat: string): string {
+  const baseName = path.basename(inputFile, path.extname(inputFile));
+  const tempDir = path.join(__dirname, '../../temp');
+  
+  // 确保临时目录存在
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
   }
+  
+  // 直接使用原始文件名（无_converted后缀）
+  return path.join(tempDir, `${baseName}.${outputFormat}`);
+}
 
   // 获取MIME类型
   private getMimeType(format: string): string {

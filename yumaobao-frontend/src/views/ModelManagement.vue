@@ -54,7 +54,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -176,7 +176,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Upload, UploadFilled } from '@element-plus/icons-vue'
+import { Upload, UploadFilled, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import api from '../api/index'
 // 从api对象中解构所需的API方法
@@ -304,16 +304,18 @@ async function submitUpload() {
     // 上传成功，更新模型列表
     await loadModels()
     
+    // 显示上传成功消息
+    ElMessage.success({ 
+      message: '模型上传成功', 
+      duration: 3000 
+    })
+    
     // 使用localStorage触发其他页面的自动刷新
     localStorage.setItem('modelUploaded', JSON.stringify({ 
       projectId: uploadForm.value.projectId, 
       timestamp: Date.now() 
     }))
     
-    ElMessage.success({ 
-      message: '模型上传成功', 
-      duration: 3000 
-    })
     uploadDialogVisible.value = false
   } catch (error) {
     console.error('模型上传失败:', error)
@@ -423,62 +425,7 @@ async function deleteModel(model) {
   }
 }
 
-async function convertIFCModel(model) {
-  try {
-    await convertIFCModelApi(model.id, {
-      outputFormat: 'glb',
-      isLightweight: true,
-      quality: 80
-    })
-    
-    // 转换成功，刷新模型列表
-    await loadModels()
-    
-    // 使用localStorage触发其他页面的自动刷新
-    localStorage.setItem('modelConverted', JSON.stringify({ 
-      projectId: model.projectId, 
-      timestamp: Date.now() 
-    }))
-    // 立即移除，避免重复触发
-    setTimeout(() => {
-      localStorage.removeItem('modelConverted')
-    }, 100)
-    
-    ElMessage.success({ 
-      message: 'IFC模型转换成功', 
-      duration: 3000 
-    })
-  } catch (error) {
-    // 提取更详细的错误信息
-    let errorMsg = 'IFC模型转换失败'
-    
-    if (error.response) {
-      // 服务器返回了错误响应
-      const serverError = error.response.data
-      console.error('IFC转换服务器错误:', serverError)
-      
-      if (serverError.message) {
-        errorMsg = `转换失败: ${serverError.message}`
-      }
-      
-      if (serverError.error) {
-        errorMsg += `, 错误详情: ${serverError.error}`
-      }
-      
-      if (serverError.details) {
-        console.error('IFC转换详细错误:', serverError.details)
-      }
-    } else if (error.message) {
-      // 请求失败，但服务器没有返回响应
-      errorMsg = `转换失败: ${error.message}`
-    }
-    
-    ElMessage.error({ 
-      message: errorMsg, 
-      duration: 3000 
-    })
-  }
-}
+
 </script>
 
 <style scoped>

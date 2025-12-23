@@ -93,28 +93,25 @@
       </div>
 
       <!-- CAD查看器（2D视图） -->
-      <div class="cad-viewer-wrapper" v-if="selectedModel && (currentView === '2d' || currentView === 'both')">
+      <div class="cad-viewer-wrapper" v-if="selectedModel && selectedModel.type === '2d'">
         <div class="view-title">2D CAD视图</div>
         <MlCadViewer
           ref="cadViewerRef"
           :locale="locale"
           :local-file="modelFile"
           :useMainThreadDraw="true"
+          baseUrl=""
           @loaded="onViewerLoaded"
           @click="onViewerClick"
           @mouse-move="onViewerMouseMove"
         />
       </div>
 
-      <!-- 3D BIM模型视图（占位符，实际项目中应集成Three.js等3D库） -->
-      <div class="bim-viewer-wrapper" v-if="selectedModel && (currentView === '3d' || currentView === 'both')">
+      <!-- 3D BIM模型视图 -->
+      <div class="bim-viewer-wrapper" v-if="selectedModel && selectedModel.type === '3d'">
         <div class="view-title">3D BIM视图</div>
         <div class="bim-viewer-container" ref="bimViewerRef">
-          <!-- 这里可以集成Three.js或其他3D库来显示BIM模型 -->
-          <div class="bim-placeholder" v-if="!isBimModelLoaded">
-            <el-icon size="64"><Document /></el-icon>
-            <p>加载3D模型中...</p>
-          </div>
+          <!-- Three.js 3D模型渲染区域 - 直接渲染，无占位符 -->
         </div>
       </div>
 
@@ -372,17 +369,42 @@ onMounted(() => {
   
   // 监听视图切换
   watch(currentView, (newView) => {
-    if (newView !== '2d' && selectedModel.value) {
-      nextTick(() => {
-        loadBimModel()
-      })
+    if (selectedModel.value) {
+      if (newView !== '2d' && selectedModel.value.type === '3d') {
+        nextTick(() => {
+          loadBimModel()
+        })
+      } else if (newView === '2d' && selectedModel.value.type === '2d') {
+        // 2D视图已经通过CAD查看器加载
+      } else {
+        // 清理不相关的视图资源
+        cleanupThreeJs()
+      }
     }
   })
-  
+
   // 监听坐标同步开关
   watch(enableCoordinateSync, (newValue) => {
-    if (newValue && currentView.value !== '2d' && selectedModel.value) {
+    if (newValue && selectedModel.value && selectedModel.value.type === '3d') {
       loadBimModel()
+    }
+  })
+
+  // 监听模型变化
+  watch(selectedModel, (newModel) => {
+    if (newModel) {
+      if (newModel.type === '3d') {
+        // 3D模型，直接加载
+        nextTick(() => {
+          loadBimModel()
+        })
+      } else if (newModel.type === '2d') {
+        // 2D模型，清理3D资源
+        cleanupThreeJs()
+      }
+    } else {
+      // 清理之前的模型
+      cleanupThreeJs()
     }
   })
   
@@ -527,7 +549,17 @@ const getModelFile = async (modelId) => {
       type: 'info'
     })
     
-    // 从服务器加载模型文件 - 优先使用轻量化版本
+    // 根据模型类型加载不同的文件
+    if (model.type === '3d') {
+      // 3D模型直接调用loadBimModel，不需要设置modelFile
+      loadingMessage.close()
+      isBimModelLoaded.value = false
+      // loadBimModel会在合适的时候被调用
+      return
+    }
+    
+    // 2D模型继续使用原有的加载逻辑
+    // 从服务器加载模型文件
     const response = await api.bimModel.downloadBIMModel(modelId, model.isLightweight)
     
     // 验证响应
@@ -611,6 +643,15 @@ const handleModelChange = async (modelId) => {
   
   selectedModelId.value = modelId
   await getModelFile(modelId)
+  
+  // 根据模型类型自动切换视图
+  if (selectedModel.value) {
+    if (selectedModel.value.type === '2d') {
+      currentView.value = '2d'
+    } else if (selectedModel.value.type === '3d') {
+      currentView.value = '3d'
+    }
+  }
 }
 
 const handleStatusFilterChange = () => {
@@ -879,14 +920,47 @@ const loadBimModel = async () => {
   console.log('加载3D BIM模型:', selectedModel.value.name)
   isBimModelLoaded.value = false
   
+  // 检查模型转换状态 - 仅对需要转换的模型类型进行检查
+  if (!selectedModel.value.conversionStatus) {
+    // 对于直接是glb/gltf格式的3D模型，默认设置为已完成
+    if (selectedModel.value.format === 'glb' || selectedModel.value.format === 'gltf') {
+      selectedModel.value.conversionStatus = 'completed'
+    } else {
+      selectedModel.value.conversionStatus = 'pending' // 默认状态
+    }
+  }
+  
+  if (selectedModel.value.conversionStatus === 'pending') {
+    console.log('模型尚未转换，无法加载3D视图')
+    ElMessage.warning('该模型尚未转换为3D格式，请在模型管理页面先完成转换')
+    return
+  }
+  
+  if (selectedModel.value.conversionStatus === 'converting') {
+    console.log('模型正在转换中，无法加载3D视图')
+    ElMessage.info('该模型正在转换中，请稍候再试')
+    return
+  }
+  
+  if (selectedModel.value.conversionStatus === 'failed') {
+    console.log('模型转换失败，无法加载3D视图')
+    ElMessage.error('该模型转换失败，请在模型管理页面重新尝试转换')
+    return
+  }
+  
   // 确保Three.js已初始化
   if (!isThreeJsInitialized.value) {
     initThreeJs()
   }
   
   try {
-    // 从服务器获取3D模型文件
+    // 从服务器获取3D模型文件 - 确保使用转换完成的轻量化模型
     const response = await api.bimModel.downloadBIMModel(selectedModel.value.id, true)
+    
+    // 验证响应
+    if (!response) {
+      throw new Error('服务器返回空响应')
+    }
     
     // 清空现有模型
     bimModels.value.forEach(model => {
@@ -895,8 +969,12 @@ const loadBimModel = async () => {
     bimModels.value = []
     bimModelObjects.value = {}
     
-    // 创建Blob对象
+    // 创建Blob对象并验证
     const blob = new Blob([response], { type: 'model/gltf-binary' })
+    if (blob.size === 0) {
+      throw new Error('服务器返回空文件')
+    }
+    
     const modelUrl = URL.createObjectURL(blob)
     
     // 使用GLTFLoader加载模型
