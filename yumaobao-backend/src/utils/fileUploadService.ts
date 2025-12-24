@@ -33,8 +33,9 @@ const objectPath = `${extName}/${uniqueObjectName}`;
       { 'Content-Type': file.mimetype }
     );
 
-    // 生成访问URL
-    const url = `${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${bucketName}/${objectPath}`;
+    // 生成访问URL - 确保包含完整的协议前缀
+    const protocol = process.env.MINIO_USE_SSL === 'true' ? 'https' : 'http';
+    const url = `${protocol}://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${bucketName}/${objectPath}`;
 
     return { url, objectName: objectPath };
   } catch (error) {

@@ -485,88 +485,56 @@ static async processLightweightModel(originalFilePath: string, originalFilename:
       // 1. 首先尝试查找当前模型的文件记录
       let fileRecord = await (db as any).collection('modelFiles').findOne({ modelId: model.id });
       
-      // 2. 如果没有找到，尝试直接使用模型的fileUrl
-      if (!fileRecord && model.fileUrl) {
+      // 2. 如果找到了文件记录，直接使用
+      if (fileRecord) {
         try {
-          // 从MinIO下载文件 - 从fileUrl中提取完整的对象名
-          // 例如: 从 "http://minio:9000/models/glb/12345-test.glb" 提取 "glb/12345-test.glb"
-          const urlParts = model.fileUrl.split('/');
-          // 找到包含 bucketName 的位置
-          const bucketIndex = urlParts.indexOf(MINIO_BUCKETS.MODELS);
-          if (bucketIndex !== -1 && bucketIndex < urlParts.length - 1) {
-            // 提取 bucketName 之后的所有部分作为对象名
-            const objectName = urlParts.slice(bucketIndex + 1).join('/');
-            if (objectName) {
-              try {
-                const fileBuffer = await downloadFileFromMinIO(MINIO_BUCKETS.MODELS, objectName);
-                
-                // 设置响应头并下载文件
-                const filename = `${model.name}${path.extname(objectName)}`;
-                // 正确编码文件名，避免无效字符导致的HTTP头解析错误
-                const encodedFilename = encodeURIComponent(filename);
-                res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-                res.setHeader('Content-Type', 'application/octet-stream');
-                res.setHeader('Content-Length', fileBuffer.length);
-                return res.send(fileBuffer);
-              } catch (minioError) {
-                console.error('通过fileUrl直接下载文件失败:', minioError);
-                // 检查是否是MinIO连接错误
-                if ((minioError as any).code === 'ECONNREFUSED' || (minioError as any).code === 'NoSuchKey') {
-                  return res.status(503).json({
-                    message: '文件存储服务暂时不可用',
-                    error: 'MinIO服务未启动或文件不存在',
-                    code: 'STORAGE_SERVICE_UNAVAILABLE'
-                  });
-                }
-                // 其他MinIO错误，继续尝试其他方法
-              }
-            }
+          // 从MinIO下载文件
+          const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+
+          // 设置响应头并下载文件
+          const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
+          res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+          res.setHeader('Content-Type', 'application/octet-stream');
+          res.setHeader('Content-Length', fileBuffer.length);
+          return res.send(fileBuffer);
+        } catch (minioError) {
+          console.error('从文件记录下载文件失败:', minioError);
+          // 检查是否是MinIO连接错误
+          if ((minioError as any).code === 'ECONNREFUSED' || (minioError as any).code === 'NoSuchKey') {
+            return res.status(503).json({
+              message: '文件存储服务暂时不可用',
+              error: 'MinIO服务未启动或文件不存在',
+              code: 'STORAGE_SERVICE_UNAVAILABLE'
+            });
           }
-        } catch (urlError) {
-          console.error('解析文件URL失败:', urlError);
-          // 继续尝试其他方法
+          // 其他MinIO错误
+          return res.status(500).json({
+            message: '下载模型失败', 
+            error: String(minioError),
+            code: 'DOWNLOAD_FAILED'
+          });
         }
       }
       
-      // 3. 作为最后的尝试，查找最新的模型文件
-      if (!fileRecord) {
-        fileRecord = await (db as any).collection('modelFiles').findOne(
-          { originalFilename: { $regex: /\.(dwg|dxf|ifc|glb)$/i } },
-          { sort: { createdAt: -1 } }
-        );
-      }
-
-      if (!fileRecord) {
-        return res.status(404).json({ message: '文件记录不存在' });
-      }
-
-      try {
-        // 从MinIO下载文件
-        const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
-
-        // 设置响应头并下载文件
-        const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
-        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Length', fileBuffer.length);
-        return res.send(fileBuffer);
-      } catch (minioError) {
-        console.error('从文件记录下载文件失败:', minioError);
-        // 检查是否是MinIO连接错误
-        if ((minioError as any).code === 'ECONNREFUSED' || (minioError as any).code === 'NoSuchKey') {
-          return res.status(503).json({
-            message: '文件存储服务暂时不可用',
-            error: 'MinIO服务未启动或文件不存在',
-            code: 'STORAGE_SERVICE_UNAVAILABLE'
+      // 3. 如果没有找到文件记录，但模型有fileUrl，尝试直接使用fileUrl
+      if (model.fileUrl) {
+        try {
+          // 直接返回重定向，让浏览器从MinIO直接下载
+          console.log('直接重定向到模型URL:', model.fileUrl);
+          return res.redirect(model.fileUrl);
+        } catch (redirectError) {
+          console.error('重定向到模型URL失败:', redirectError);
+          // 重定向失败，返回错误
+          return res.status(500).json({
+            message: '下载模型失败',
+            error: '无法重定向到模型文件',
+            code: 'REDIRECT_FAILED'
           });
         }
-        // 其他MinIO错误
-        return res.status(500).json({
-          message: '下载模型失败', 
-          error: String(minioError),
-          code: 'DOWNLOAD_FAILED'
-        });
       }
+
+      // 4. 如果所有方法都失败，返回404
+      return res.status(404).json({ message: '模型文件不存在' });
     } catch (error) {
       console.error('下载模型失败:', error);
       return res.status(500).json({ 

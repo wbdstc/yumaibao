@@ -32,6 +32,22 @@ export const ensureBucketsExist = async () => {
         await minioClient.makeBucket(bucket, 'us-east-1');
         console.log(`Bucket '${bucket}' created successfully`);
       }
+      
+      // 设置存储桶策略，允许公开访问
+      const policy = JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: '*',
+            Action: ['s3:GetObject'],
+            Resource: [`arn:aws:s3:::${bucket}/*`]
+          }
+        ]
+      });
+      
+      await minioClient.setBucketPolicy(bucket, policy);
+      console.log(`Bucket policy set for '${bucket}'`);
     }
     return { success: true, message: '所有存储桶已创建或存在' };
   } catch (error) {

@@ -124,6 +124,14 @@ interface Props {
    * - false: use web worker
    */
   useMainThreadDraw?: boolean
+  /** 是否显示完整UI（菜单、工具栏、状态栏等），默认为true */
+  showFullUI?: boolean;
+  /** 是否显示文件名，默认为true */
+  showFileName?: boolean;
+  /** 是否显示工具栏，默认为true */
+  showToolbars?: boolean;
+  /** 是否显示状态栏，默认为true */
+  showStatusBar?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -132,7 +140,11 @@ const props = withDefaults(defineProps<Props>(), {
   localFile: undefined,
   background: undefined,
   baseUrl: undefined,
-  useMainThreadDraw: false
+  useMainThreadDraw: false,
+  showFullUI: true,
+  showFileName: true,
+  showToolbars: true,
+  showStatusBar: true
 })
 
 const { t } = useI18n()
@@ -379,43 +391,43 @@ const closeNotificationCenter = () => {
   <div v-if="editorRef" class="ml-cad-viewer-container">
     <!-- Element Plus configuration provider for internationalization -->
     <el-config-provider :locale="elementPlusLocale">
-      <!-- Header section with main menu and language selector -->
-      <header>
-        <ml-main-menu />
-        <ml-language-selector :current-locale="effectiveLocale" />
+      <!-- Header section with main menu and language selector - 根据props控制显示 -->
+      <header v-if="props.showFullUI || props.showFileName">
+        <ml-main-menu v-if="props.showFullUI" />
+        <ml-language-selector v-if="props.showFullUI" :current-locale="effectiveLocale" />
       </header>
 
       <!-- Main content area with CAD viewing tools and controls -->
       <main>
-        <!-- Display current filename at the top center -->
-        <div class="ml-file-name">{{ store.fileName }}</div>
+        <!-- Display current filename at the top center - 根据props控制显示 -->
+        <div v-if="props.showFileName" class="ml-file-name">{{ store.fileName }}</div>
 
-        <!-- Toolbar with common CAD operations (zoom, pan, select, etc.) -->
-        <ml-tool-bars />
+        <!-- Toolbar with common CAD operations (zoom, pan, select, etc.) - 根据props控制显示 -->
+        <ml-tool-bars v-if="props.showFullUI || props.showToolbars" />
 
-        <!-- Layer manager palette and entity properties palette for controlling entity visibility and properties -->
-        <ml-palette-manager :editor="editor" />
+        <!-- Layer manager palette and entity properties palette for controlling entity visibility and properties - 根据props控制显示 -->
+        <ml-palette-manager v-if="props.showFullUI" :editor="editor" />
 
-        <!-- Dialog manager for modal dialogs and settings -->
-        <ml-dialog-manager />
+        <!-- Dialog manager for modal dialogs and settings - 根据props控制显示 -->
+        <ml-dialog-manager v-if="props.showFullUI" />
       </main>
 
-      <!-- Footer section with command line and status information -->
-      <footer>
-        <!-- Status bar with progress, settings, and theme controls -->
-        <ml-status-bar @toggle-notification-center="toggleNotificationCenter" />
+      <!-- Footer section with command line and status information - 根据props控制显示 -->
+      <footer v-if="props.showFullUI || props.showStatusBar">
+        <!-- Status bar with progress, settings, and theme controls - 根据props控制显示 -->
+        <ml-status-bar v-if="props.showFullUI || props.showStatusBar" @toggle-notification-center="toggleNotificationCenter" />
       </footer>
 
-      <!-- Hidden components for file handling and entity information -->
+      <!-- Hidden components for file handling and entity information - 根据props控制显示 -->
       <!-- File reader for local file uploads -->
-      <ml-file-reader @file-read="handleFileRead" />
+      <ml-file-reader v-if="props.showFullUI" @file-read="handleFileRead" />
 
       <!-- Entity info panel for displaying object properties -->
-      <ml-entity-info />
+      <ml-entity-info v-if="props.showFullUI" />
 
-      <!-- Notification center -->
+      <!-- Notification center - 根据props控制显示 -->
       <ml-notification-center
-        v-if="showNotificationCenter"
+        v-if="showNotificationCenter && props.showFullUI"
         @close="closeNotificationCenter"
       />
     </el-config-provider>
@@ -424,25 +436,33 @@ const closeNotificationCenter = () => {
 
 <!-- Component-specific styles -->
 <style>
-/* Canvas element styling */
+/* 根容器样式 - 确保组件自适应父容器 */
+:host {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Canvas element styling - 修改为自适应父容器 */
 .ml-cad-canvas {
   position: absolute;
   top: 0px;
   left: 0px;
-  height: calc(
-    100vh - var(--ml-status-bar-height)
-  ); /* Adjusts for menu and status bar */
-  width: 100%;
+  height: 100%; /* 使用父容器高度 */
+  width: 100%; /* 使用父容器宽度 */
   display: block;
   outline: none;
   z-index: 1; /* Canvas above background but below UI */
   pointer-events: auto; /* Ensure canvas can receive mouse events */
 }
 
-/* Main CAD viewer container styling */
+/* Main CAD viewer container styling - 修改为自适应父容器 */
 .ml-cad-viewer-container {
   position: relative;
-  width: 100vw;
+  width: 100%; /* 使用父容器宽度 */
+  height: 100%; /* 使用父容器高度 */
   z-index: 2;
   pointer-events: auto;
 }
