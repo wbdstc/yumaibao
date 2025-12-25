@@ -107,15 +107,8 @@
           ref="cadViewerRef"
           :locale="locale"
           :url="modelFile"
-          :useMainThreadDraw="true"
-          :base-url="baseUrl"
-          @loaded="onViewerLoaded"
-          @click="onViewerClick"
-          @mouse-move="onViewerMouseMove"
-          :show-full-ui="false"
-          :show-file-name="false"
-          :show-toolbars="false"
-          :show-status-bar="false"
+          :use-main-thread-draw="config.cadViewer.useMainThreadDraw"
+          :base-url="config.assets.baseUrl"
         />
       </div>
 
@@ -217,8 +210,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
-import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
 import { useUserStore } from '../stores/index.js'
+import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
+import config from '../config/index.js'
 // 导入Three.js相关模块
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -236,6 +230,7 @@ let scene = null
 let camera = null
 let renderer = null
 let controls = null
+let gridHelper = null // 保存3D网格对象引用
 // 只有需要响应式的状态才使用ref
 const bimModels = ref([]) // 存储加载的BIM模型
 const bimModelObjects = ref({}) // 存储模型对象，用于高亮
@@ -341,10 +336,14 @@ const canNavigateFloors = computed(() => {
 
 // 生命周期
 onMounted(() => {
-  // 初始化CAD查看器设置
+  // 配置CAD查看器UI设置
   AcApSettingManager.instance.isShowCommandLine = false
-  AcApSettingManager.instance.isShowToolbar = true
+  AcApSettingManager.instance.isShowToolbar = config.cadViewer.showToolbars
   AcApSettingManager.instance.isShowCoordinate = true
+  AcApSettingManager.instance.isShowMainMenu = false
+  AcApSettingManager.instance.isShowStats = false
+  AcApSettingManager.instance.isShowEntityInfo = false
+  AcApSettingManager.instance.isShowLanguageSelector = false
 
   // 获取项目列表
   getProjects()
@@ -774,9 +773,15 @@ const zoomToExtent = () => {
 
 const toggleGrid = () => {
   showGrid.value = !showGrid.value
+  
+  // 处理2D视图网格
   if (cadViewerRef.value) {
-    // 调用CAD查看器的setGridVisible方法
     cadViewerRef.value.setGridVisible(showGrid.value)
+  }
+  
+  // 处理3D视图网格
+  if (gridHelper) {
+    gridHelper.visible = showGrid.value
   }
 }
 
@@ -863,7 +868,8 @@ const initThreeJs = () => {
   scene.add(directionalLight)
   
   // 添加网格辅助线
-  const gridHelper = new THREE.GridHelper(100, 100)
+  gridHelper = new THREE.GridHelper(100, 100)
+  gridHelper.visible = showGrid.value // 根据当前showGrid状态设置初始可见性
   scene.add(gridHelper)
   
   // 添加坐标轴辅助线
@@ -955,6 +961,7 @@ const cleanupThreeJs = () => {
   camera = null
   renderer = null
   controls = null
+  gridHelper = null
   bimModels.value = []
   bimModelObjects.value = {}
   isThreeJsInitialized.value = false

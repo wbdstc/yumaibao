@@ -32,36 +32,9 @@ export default defineConfig({
       'image/gif': ['gif'],
       'image/x-icon': ['ico']
     },
-    // 添加中间件确保worker文件被正确提供
-    middleware: [
-      function (req, res, next) {
-        // 如果请求的是worker文件，确保从node_modules目录提供
-        if (req.url.includes('mtext-renderer-worker.js') || req.url.includes('libredwg-parser-worker.js') || req.url.includes('dxf-parser-worker.js')) {
-          const fs = require('fs');
-          const path = require('path');
-          
-          // 构建worker文件的完整路径
-          let workerPath;
-          if (req.url.includes('mtext-renderer-worker.js')) {
-            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'cad-simple-viewer', 'dist', 'mtext-renderer-worker.js');
-          } else if (req.url.includes('libredwg-parser-worker.js')) {
-            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'cad-simple-viewer', 'dist', 'libredwg-parser-worker.js');
-          } else if (req.url.includes('dxf-parser-worker.js')) {
-            workerPath = path.join(__dirname, 'node_modules', '@mlightcad', 'data-model', 'dist', 'dxf-parser-worker.js');
-          }
-          
-          if (workerPath && fs.existsSync(workerPath)) {
-            // 设置正确的MIME类型
-            res.setHeader('Content-Type', 'application/javascript');
-            // 读取并返回文件内容
-            const content = fs.readFileSync(workerPath);
-            res.end(content);
-            return;
-          }
-        }
-        next();
-      }
-    ]
+    // 移除自定义中间件，使用Vite默认的静态资源处理
+    // Vite会自动处理public目录下的静态资源，确保正确的MIME类型
+    // 移除后，Vite会正确处理所有静态资源请求，包括fonts.json和worker文件
   },
   resolve: {
     alias: {

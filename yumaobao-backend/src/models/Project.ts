@@ -74,7 +74,13 @@ class ProjectModel {
   // 查找所有项目
   async findAll(query?: any): Promise<ProjectAttributes[]> {
     const projects = await this.getCollection().find<ProjectAttributes>(query || {}).toArray();
-    return projects;
+    // 确保每个项目的users字段始终是数组
+    return projects.map(project => {
+      if (!project.users) {
+        project.users = [];
+      }
+      return project;
+    });
   }
 
   // 根据用户ID查找项目

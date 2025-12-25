@@ -1,32 +1,250 @@
 {
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "view": "View",
+    "search": "Search",
+    "refresh": "Refresh",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "submit": "Submit",
+    "reset": "Reset",
+    "export": "Export",
+    "import": "Import",
+    "generate": "Generate",
+    "download": "Download",
+    "upload": "Upload",
+    "print": "Print",
+    "copy": "Copy",
+    "paste": "Paste",
+    "cut": "Cut",
+    "selectAll": "Select All",
+    "clear": "Clear",
+    "filter": "Filter",
+    "sort": "Sort",
+    "more": "More",
+    "less": "Less",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "fullScreen": "Full Screen",
+    "exitFullScreen": "Exit Full Screen",
+    "help": "Help",
+    "about": "About",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
   "main": {
     "mainMenu": {
       "new": "New Drawing",
       "open": "Open Drawing",
       "save": "Save Drawing",
-      "export": "Export to SVG"
+      "export": "Export as SVG"
     },
     "verticalToolbar": {
       "select": {
         "text": "Select",
-        "description": "Select entities"
+        "description": "Select Entities"
       },
       "pan": {
         "text": "Pan",
-        "description": "Shifts the view without changing the viewing direction or magnification"
+        "description": "Move view without changing direction or magnification"
       },
       "zoomToExtent": {
-        "text": "Zoom Extents",
-        "description": "Zooms to display the maximum extents of all entities"
+        "text": "Zoom to Extent",
+        "description": "Zoom to display maximum range of all entities"
       },
       "zoomToBox": {
-        "text": "Zoom Window",
-        "description": "Zooms to display an area specified by a rectangular window"
+        "text": "Zoom to Box",
+        "description": "Zoom to display area specified by rectangle"
       },
       "layer": {
         "text": "Layer",
-        "description": "Manages layers"
+        "description": "Manage Layers"
       }
+    },
+    "statusBar": {
+      "setting": {
+        "toolbar": "Toolbar Settings",
+        "languageSelector": "Language Selector",
+        "coordinate": "Coordinate Display"
+      }
+    },
+    "message": {
+      "failedToOpenFile": "Failed to open file",
+      "failedToParseDrawing": "Failed to parse drawing",
+      "workerError": "Worker error",
+      "fontLoadError": "Font load error"
     }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome Back",
+    "recentProjects": "Recent Projects",
+    "projectStatistics": "Project Statistics",
+    "embeddedPartStatistics": "Embedded Part Statistics",
+    "scanHistory": "Scan History",
+    "quickActions": "Quick Actions",
+    "createProject": "Create Project",
+    "manageProjects": "Manage Projects",
+    "manageEmbeddedParts": "Manage Embedded Parts",
+    "scanQRCode": "Scan QR Code",
+    "generateReport": "Generate Report"
+  },
+  "project": {
+    "title": "Project Management",
+    "list": "Project List",
+    "create": "Create Project",
+    "edit": "Edit Project",
+    "delete": "Delete Project",
+    "name": "Project Name",
+    "description": "Description",
+    "location": "Location",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "status": "Status",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At",
+    "owner": "Project Owner",
+    "team": "Project Team",
+    "floors": "Floor Management",
+    "models": "Model Management",
+    "embeddedParts": "Embedded Part Management",
+    "reports": "Report Management"
+  },
+  "floor": {
+    "title": "Floor Management",
+    "list": "Floor List",
+    "create": "Create Floor",
+    "edit": "Edit Floor",
+    "delete": "Delete Floor",
+    "name": "Floor Name",
+    "number": "Floor Number",
+    "height": "Floor Height",
+    "area": "Floor Area",
+    "level": "Floor Level",
+    "description": "Description",
+    "embeddedParts": "Embedded Part Count"
+  },
+  "embeddedPart": {
+    "title": "Embedded Part Management",
+    "list": "Embedded Part List",
+    "create": "Create Embedded Part",
+    "edit": "Edit Embedded Part",
+    "delete": "Delete Embedded Part",
+    "name": "Embedded Part Name",
+    "code": "Embedded Part Code",
+    "modelNumber": "Model Number",
+    "type": "Type",
+    "material": "Material",
+    "status": "Status",
+    "location": "Installation Location",
+    "floorId": "Floor ID",
+    "projectId": "Project ID",
+    "designer": "Designer",
+    "installer": "Installer",
+    "inspector": "Inspector",
+    "installationDate": "Installation Date",
+    "inspectionDate": "Inspection Date",
+    "notes": "Notes",
+    "qrcode": "QR Code",
+    "pending": "Pending",
+    "installed": "Installed",
+    "inspected": "Inspected",
+    "completed": "Completed"
+  },
+  "model": {
+    "title": "Model Management",
+    "list": "Model List",
+    "create": "Upload Model",
+    "edit": "Edit Model",
+    "delete": "Delete Model",
+    "name": "Model Name",
+    "description": "Description",
+    "type": "Model Type",
+    "format": "File Format",
+    "size": "File Size",
+    "uploadDate": "Upload Date",
+    "conversionStatus": "Conversion Status",
+    "conversionProgress": "Conversion Progress",
+    "download": "Download Model",
+    "convert": "Convert Model",
+    "view": "View Model",
+    "2d": "2D Model",
+    "3d": "3D Model",
+    "both": "Both Views",
+    "pending": "Pending",
+    "converting": "Converting",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "bimVisualization": {
+    "title": "BIM Visualization",
+    "selectProject": "Select Project",
+    "selectFloor": "Select Floor",
+    "selectModel": "Select Model",
+    "2dView": "2D CAD View",
+    "3dView": "3D BIM View",
+    "bothViews": "Both Views",
+    "coordinateSync": "Coordinate Sync",
+    "zoomToExtent": "Zoom to Extent",
+    "showGrid": "Show Grid",
+    "hideGrid": "Hide Grid",
+    "layerManagement": "Layer Management",
+    "embeddedParts": "Embedded Part List",
+    "modelInfo": "Model Information",
+    "layers": "Layers",
+    "entities": "Entities",
+    "modelLoaded": "Model Loaded Successfully",
+    "modelLoading": "Loading Model...",
+    "modelLoadFailed": "Model Load Failed",
+    "highlightEmbeddedPart": "Located Embedded Part: {name}",
+    "modelConverted": "Model Converted to 3D Format",
+    "modelConverting": "Model is Converting",
+    "modelConversionFailed": "Model Conversion Failed"
+  },
+  "error": {
+    "network": "Network Error, Please Check Network Connection",
+    "server": "Server Error",
+    "notFound": "Requested Resource Not Found",
+    "unauthorized": "Login Expired, Please Login Again",
+    "forbidden": "No Permission to Access This Resource",
+    "validation": "Form Validation Failed, Please Check Input",
+    "fileTooLarge": "File Size Exceeds Limit",
+    "invalidFileType": "Unsupported File Type",
+    "modelConversionFailed": "Model Conversion Failed",
+    "modelLoadFailed": "Model Load Failed",
+    "dwgParseError": "DWG File Parse Error",
+    "workerError": "Worker Error",
+    "translationMissing": "Translation Missing",
+    "fontLoadError": "Font Load Error",
+    "layoutError": "Layout Error"
+  },
+  "success": {
+    "save": "Save Successfully",
+    "delete": "Delete Successfully",
+    "create": "Create Successfully",
+    "update": "Update Successfully",
+    "upload": "Upload Successfully",
+    "download": "Download Successfully",
+    "generate": "Generate Successfully",
+    "convert": "Convert Successfully",
+    "scan": "Scan Successfully",
+    "inspect": "Inspect Successfully",
+    "install": "Install Successfully"
+  },
+  "warning": {
+    "confirmDelete": "Are you sure you want to delete?",
+    "unsavedChanges": "There are unsaved changes, are you sure you want to leave?",
+    "modelNotConverted": "This model has not been converted to 3D format, please complete conversion first",
+    "modelConverting": "This model is being converted, please try again later",
+    "modelConversionFailed": "This model conversion failed, please try again",
+    "fileExists": "File already exists, do you want to overwrite?"
   }
 }

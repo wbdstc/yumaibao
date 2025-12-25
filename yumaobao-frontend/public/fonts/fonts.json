@@ -1,0 +1,12 @@
+[
+  { "name": ["Arial"], "file": "arial.ttf" },
+  { "name": ["Helvetica"], "file": "helvetica.ttf" },
+  { "name": ["Times New Roman"], "file": "times.ttf" },
+  { "name": ["Courier New"], "file": "courier.ttf" },
+  { "name": ["Georgia"], "file": "georgia.ttf" },
+  { "name": ["Verdana"], "file": "verdana.ttf" },
+  { "name": ["Tahoma"], "file": "tahoma.ttf" },
+  { "name": ["Trebuchet MS"], "file": "trebuchet.ttf" },
+  { "name": ["Arial Black"], "file": "arial-black.ttf" },
+  { "name": ["Impact"], "file": "impact.ttf" }
+]
