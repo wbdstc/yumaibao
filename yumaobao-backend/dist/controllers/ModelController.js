@@ -436,83 +436,55 @@ class ModelController {
             }
             // 1. 首先尝试查找当前模型的文件记录
             let fileRecord = await db.collection('modelFiles').findOne({ modelId: model.id });
-            // 2. 如果没有找到，尝试直接使用模型的fileUrl
-            if (!fileRecord && model.fileUrl) {
+            // 2. 如果找到了文件记录，直接使用
+            if (fileRecord) {
                 try {
-                    // 从MinIO下载文件 - 从fileUrl中提取完整的对象名
-                    // 例如: 从 "http://minio:9000/models/glb/12345-test.glb" 提取 "glb/12345-test.glb"
-                    const urlParts = model.fileUrl.split('/');
-                    // 找到包含 bucketName 的位置
-                    const bucketIndex = urlParts.indexOf(minio_1.MINIO_BUCKETS.MODELS);
-                    if (bucketIndex !== -1 && bucketIndex < urlParts.length - 1) {
-                        // 提取 bucketName 之后的所有部分作为对象名
-                        const objectName = urlParts.slice(bucketIndex + 1).join('/');
-                        if (objectName) {
-                            try {
-                                const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(minio_1.MINIO_BUCKETS.MODELS, objectName);
-                                // 设置响应头并下载文件
-                                const filename = `${model.name}${path_1.default.extname(objectName)}`;
-                                // 正确编码文件名，避免无效字符导致的HTTP头解析错误
-                                const encodedFilename = encodeURIComponent(filename);
-                                res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-                                res.setHeader('Content-Type', 'application/octet-stream');
-                                res.setHeader('Content-Length', fileBuffer.length);
-                                return res.send(fileBuffer);
-                            }
-                            catch (minioError) {
-                                console.error('通过fileUrl直接下载文件失败:', minioError);
-                                // 检查是否是MinIO连接错误
-                                if (minioError.code === 'ECONNREFUSED' || minioError.code === 'NoSuchKey') {
-                                    return res.status(503).json({
-                                        message: '文件存储服务暂时不可用',
-                                        error: 'MinIO服务未启动或文件不存在',
-                                        code: 'STORAGE_SERVICE_UNAVAILABLE'
-                                    });
-                                }
-                                // 其他MinIO错误，继续尝试其他方法
-                            }
-                        }
+                    // 从MinIO下载文件
+                    const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
+                    // 设置响应头并下载文件
+                    const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
+                    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+                    res.setHeader('Content-Type', 'application/octet-stream');
+                    res.setHeader('Content-Length', fileBuffer.length);
+                    return res.send(fileBuffer);
+                }
+                catch (minioError) {
+                    console.error('从文件记录下载文件失败:', minioError);
+                    // 检查是否是MinIO连接错误
+                    if (minioError.code === 'ECONNREFUSED' || minioError.code === 'NoSuchKey') {
+                        return res.status(503).json({
+                            message: '文件存储服务暂时不可用',
+                            error: 'MinIO服务未启动或文件不存在',
+                            code: 'STORAGE_SERVICE_UNAVAILABLE'
+                        });
                     }
-                }
-                catch (urlError) {
-                    console.error('解析文件URL失败:', urlError);
-                    // 继续尝试其他方法
-                }
-            }
-            // 3. 作为最后的尝试，查找最新的模型文件
-            if (!fileRecord) {
-                fileRecord = await db.collection('modelFiles').findOne({ originalFilename: { $regex: /\.(dwg|dxf|ifc|glb)$/i } }, { sort: { createdAt: -1 } });
-            }
-            if (!fileRecord) {
-                return res.status(404).json({ message: '文件记录不存在' });
-            }
-            try {
-                // 从MinIO下载文件
-                const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
-                // 设置响应头并下载文件
-                const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
-                res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-                res.setHeader('Content-Type', 'application/octet-stream');
-                res.setHeader('Content-Length', fileBuffer.length);
-                return res.send(fileBuffer);
-            }
-            catch (minioError) {
-                console.error('从文件记录下载文件失败:', minioError);
-                // 检查是否是MinIO连接错误
-                if (minioError.code === 'ECONNREFUSED' || minioError.code === 'NoSuchKey') {
-                    return res.status(503).json({
-                        message: '文件存储服务暂时不可用',
-                        error: 'MinIO服务未启动或文件不存在',
-                        code: 'STORAGE_SERVICE_UNAVAILABLE'
+                    // 其他MinIO错误
+                    return res.status(500).json({
+                        message: '下载模型失败',
+                        error: String(minioError),
+                        code: 'DOWNLOAD_FAILED'
                     });
                 }
-                // 其他MinIO错误
-                return res.status(500).json({
-                    message: '下载模型失败',
-                    error: String(minioError),
-                    code: 'DOWNLOAD_FAILED'
-                });
             }
+            // 3. 如果没有找到文件记录，但模型有fileUrl，尝试直接使用fileUrl
+            if (model.fileUrl) {
+                try {
+                    // 直接返回重定向，让浏览器从MinIO直接下载
+                    console.log('直接重定向到模型URL:', model.fileUrl);
+                    return res.redirect(model.fileUrl);
+                }
+                catch (redirectError) {
+                    console.error('重定向到模型URL失败:', redirectError);
+                    // 重定向失败，返回错误
+                    return res.status(500).json({
+                        message: '下载模型失败',
+                        error: '无法重定向到模型文件',
+                        code: 'REDIRECT_FAILED'
+                    });
+                }
+            }
+            // 4. 如果所有方法都失败，返回404
+            return res.status(404).json({ message: '模型文件不存在' });
         }
         catch (error) {
             console.error('下载模型失败:', error);
@@ -767,46 +739,125 @@ class ModelController {
     // 上传模型文件时自动转换IFC
     static async autoConvertIFCIfNeeded(file, modelData) {
         if (path_1.default.extname(file.originalname).toLowerCase() === '.ifc') {
-            // 创建临时文件
-            const tempDir = path_1.default.join(__dirname, '../../temp');
-            if (!fs_1.default.existsSync(tempDir)) {
-                fs_1.default.mkdirSync(tempDir, { recursive: true });
-            }
-            const tempFilePath = path_1.default.join(tempDir, file.originalname);
-            fs_1.default.writeFileSync(tempFilePath, file.buffer);
+            console.log('开始IFC自动转换:', file.originalname);
+            // 生成转换ID用于进度跟踪
+            const conversionId = `ifc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            // 进度回调函数
+            const progressCallback = (progress, message) => {
+                console.log(`[IFC转换 ${conversionId}] 进度: ${progress}%, 状态: ${message}`);
+                fileUploadService_1.conversionProgressManager.updateProgress(conversionId, progress, message);
+            };
+            // 初始化进度
+            progressCallback(10, '准备转换');
+            // 生成安全的临时文件路径
+            const tempFilePath = (0, fileUploadService_1.generateSafeTempFilePath)(file.originalname, 'ifc_upload');
+            const tempFiles = [tempFilePath];
             try {
-                // 执行IFC转换
-                const conversionResult = await ifcConversionService_1.default.convertIFC({
+                // 验证转换参数
+                const conversionParams = {
                     inputFile: tempFilePath,
                     outputFormat: 'glb',
                     isLightweight: modelData.isLightweight !== false,
                     quality: 80,
                     includeMaterials: true,
-                    includeTextures: true
-                });
+                    includeTextures: true,
+                    timeout: 300000, // 5分钟超时
+                    onProgress: progressCallback
+                };
+                const validationResult = (0, fileUploadService_1.validateConversionParams)(conversionParams);
+                if (!validationResult.valid) {
+                    console.error('转换参数验证失败:', validationResult.errors);
+                    throw new Error('CONVERSION_PARAMS_INVALID: ' + validationResult.errors.join(', '));
+                }
+                // 写入临时文件
+                progressCallback(20, '正在写入临时文件');
+                fs_1.default.writeFileSync(tempFilePath, file.buffer);
+                console.log(`临时文件已写入: ${tempFilePath}`);
+                // 执行IFC转换
+                progressCallback(30, '开始IFC转换');
+                console.log(`开始IFC转换，文件: ${file.originalname}`);
+                let conversionResult;
+                try {
+                    conversionResult = await ifcConversionService_1.default.convertIFC(conversionParams);
+                }
+                catch (conversionError) {
+                    console.error('IFC转换服务调用失败:', conversionError);
+                    // 即使转换失败，也不立即清理临时文件，让转换服务处理
+                    throw new Error(`CONVERSION_SERVICE_ERROR: ${String(conversionError)}`);
+                }
                 if (conversionResult.success && conversionResult.outputUrl && conversionResult.objectName) {
+                    progressCallback(90, '转换成功，准备上传');
+                    // 只在转换成功时清理临时文件
+                    console.log(`清理临时文件: ${tempFiles.join(', ')}`);
+                    (0, fileUploadService_1.cleanupTempFiles)(tempFiles);
+                    progressCallback(100, 'IFC转换完成');
+                    console.log('IFC转换成功:', {
+                        originalFile: file.originalname,
+                        convertedFile: conversionResult.objectName,
+                        conversionTime: conversionResult.conversionTime,
+                        originalSize: conversionResult.originalSize,
+                        convertedSize: conversionResult.convertedSize
+                    });
                     // 返回转换后的URL、格式、文件大小和objectName
                     return {
                         converted: true,
                         fileUrl: conversionResult.outputUrl,
                         objectName: conversionResult.objectName,
                         format: 'glb',
-                        fileSize: conversionResult.convertedSize
+                        fileSize: conversionResult.convertedSize,
+                        conversionTime: conversionResult.conversionTime,
+                        originalSize: conversionResult.originalSize,
+                        sizeReduction: conversionResult.originalSize && conversionResult.convertedSize
+                            ? Math.round((1 - conversionResult.convertedSize / conversionResult.originalSize) * 100)
+                            : null
                     };
+                }
+                else {
+                    // 转换失败，获取详细错误信息
+                    const errorDetails = (0, fileUploadService_1.generateErrorDetails)(new Error(conversionResult.message || '转换失败'));
+                    console.error('IFC转换失败:', {
+                        message: conversionResult.message,
+                        errorDetails: errorDetails,
+                        tempFile: tempFilePath,
+                        tempFiles: tempFiles
+                    });
+                    // 转换失败时保留临时文件，供调试和重试使用
+                    console.log('转换失败，保留临时文件以供调试:', tempFiles);
+                    throw new Error('CONVERSION_FAILED: ' + conversionResult.message);
                 }
             }
             catch (error) {
-                console.error('自动转换IFC失败:', error);
-                // 自动转换失败，返回原始文件信息
-            }
-            finally {
-                // 清理临时文件
-                if (fs_1.default.existsSync(tempFilePath)) {
-                    fs_1.default.unlinkSync(tempFilePath);
+                progressCallback(0, '转换失败');
+                const errorDetails = (0, fileUploadService_1.generateErrorDetails)(error);
+                console.error('自动转换IFC失败:', {
+                    error: error,
+                    errorDetails: errorDetails,
+                    fileName: file.originalname
+                });
+                // 如果有错误详情，包含在错误中
+                if (errorDetails.code !== 'UNKNOWN_ERROR') {
+                    throw new Error(`${errorDetails.code}: ${errorDetails.details}`);
+                }
+                else {
+                    throw error;
                 }
             }
+            finally {
+                // 清理临时文件（只清理输入文件，保留转换后的文件用于调试）
+                console.log('转换过程完成，清理临时输入文件');
+                const inputFiles = tempFiles.filter(file => file.includes('ifc_upload'));
+                if (inputFiles.length > 0) {
+                    (0, fileUploadService_1.cleanupTempFiles)(inputFiles);
+                }
+                else {
+                    // 如果没有输入文件，清理所有临时文件
+                    (0, fileUploadService_1.cleanupTempFiles)(tempFiles);
+                }
+                fileUploadService_1.conversionProgressManager.removeCallback(conversionId);
+                // 注意：转换后的输出文件会在ifcConversionService中清理或上传到MinIO后清理
+            }
         }
-        // 不是IFC文件或转换失败，返回null
+        // 不是IFC文件，返回null
         return null;
     }
 }

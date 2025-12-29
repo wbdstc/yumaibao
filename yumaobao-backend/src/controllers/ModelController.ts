@@ -5,7 +5,16 @@ import { getDB } from '../config/mongodb';
 import Model from '../models/Model';
 import Project from '../models/Project';
 import Floor from '../models/Floor';
-import { uploadFileToMinIO, downloadFileFromMinIO, deleteFileFromMinIO } from '../utils/fileUploadService';
+import { 
+  uploadFileToMinIO, 
+  downloadFileFromMinIO, 
+  deleteFileFromMinIO,
+  generateSafeTempFilePath,
+  cleanupTempFiles,
+  generateErrorDetails,
+  validateConversionParams,
+  conversionProgressManager
+} from '../utils/fileUploadService';
 import { MINIO_BUCKETS } from '../config/minio';
 import ifcConversionService from '../utils/ifcConversionService';
 // 模型轻量化处理工具的导入已移除，因为现在使用MinIO存储
@@ -806,51 +815,140 @@ static async processLightweightModel(originalFilePath: string, originalFilename:
 
   // 上传模型文件时自动转换IFC
 private static async autoConvertIFCIfNeeded(file: Express.Multer.File, modelData: any) {
-  if (path.extname(file.originalname).toLowerCase() === '.ifc') {
-    // 创建临时文件
-    const tempDir = path.join(__dirname, '../../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
+    if (path.extname(file.originalname).toLowerCase() === '.ifc') {
+      console.log('开始IFC自动转换:', file.originalname);
+      
+      // 生成转换ID用于进度跟踪
+      const conversionId = `ifc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 进度回调函数
+      const progressCallback = (progress: number, message: string) => {
+        console.log(`[IFC转换 ${conversionId}] 进度: ${progress}%, 状态: ${message}`);
+        conversionProgressManager.updateProgress(conversionId, progress, message);
+      };
 
-    const tempFilePath = path.join(tempDir, file.originalname);
-    fs.writeFileSync(tempFilePath, file.buffer);
+      // 初始化进度
+      progressCallback(10, '准备转换');
 
-    try {
-      // 执行IFC转换
-      const conversionResult = await ifcConversionService.convertIFC({
-        inputFile: tempFilePath,
-        outputFormat: 'glb',
-        isLightweight: modelData.isLightweight !== false,
-        quality: 80,
-        includeMaterials: true,
-        includeTextures: true
-      });
-
-      if (conversionResult.success && conversionResult.outputUrl && conversionResult.objectName) {
-        // 返回转换后的URL、格式、文件大小和objectName
-        return {
-          converted: true,
-          fileUrl: conversionResult.outputUrl,
-          objectName: conversionResult.objectName,
-          format: 'glb',
-          fileSize: conversionResult.convertedSize
+      // 生成安全的临时文件路径
+      const tempFilePath = generateSafeTempFilePath(file.originalname, 'ifc_upload');
+      const tempFiles: string[] = [tempFilePath];
+      
+      try {
+        // 验证转换参数
+        const conversionParams = {
+          inputFile: tempFilePath,
+          outputFormat: 'glb' as const,
+          isLightweight: modelData.isLightweight !== false,
+          quality: 80,
+          includeMaterials: true,
+          includeTextures: true,
+          timeout: 300000, // 5分钟超时
+          onProgress: progressCallback
         };
-      }
-    } catch (error) {
-      console.error('自动转换IFC失败:', error);
-      // 自动转换失败，返回原始文件信息
-    } finally {
-      // 清理临时文件
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
+
+        const validationResult = validateConversionParams(conversionParams);
+        if (!validationResult.valid) {
+          console.error('转换参数验证失败:', validationResult.errors);
+          throw new Error('CONVERSION_PARAMS_INVALID: ' + validationResult.errors.join(', '));
+        }
+
+        // 写入临时文件
+        progressCallback(20, '正在写入临时文件');
+        fs.writeFileSync(tempFilePath, file.buffer);
+        console.log(`临时文件已写入: ${tempFilePath}`);
+
+        // 执行IFC转换
+        progressCallback(30, '开始IFC转换');
+        console.log(`开始IFC转换，文件: ${file.originalname}`);
+        
+        let conversionResult;
+        try {
+          conversionResult = await ifcConversionService.convertIFC(conversionParams);
+        } catch (conversionError) {
+          console.error('IFC转换服务调用失败:', conversionError);
+          // 即使转换失败，也不立即清理临时文件，让转换服务处理
+          throw new Error(`CONVERSION_SERVICE_ERROR: ${String(conversionError)}`);
+        }
+
+        if (conversionResult.success && conversionResult.outputUrl && conversionResult.objectName) {
+          progressCallback(90, '转换成功，准备上传');
+          
+          // 只在转换成功时清理临时文件
+          console.log(`清理临时文件: ${tempFiles.join(', ')}`);
+          cleanupTempFiles(tempFiles);
+          progressCallback(100, 'IFC转换完成');
+          
+          console.log('IFC转换成功:', {
+            originalFile: file.originalname,
+            convertedFile: conversionResult.objectName,
+            conversionTime: conversionResult.conversionTime,
+            originalSize: conversionResult.originalSize,
+            convertedSize: conversionResult.convertedSize
+          });
+          
+          // 返回转换后的URL、格式、文件大小和objectName
+          return {
+            converted: true,
+            fileUrl: conversionResult.outputUrl,
+            objectName: conversionResult.objectName,
+            format: 'glb',
+            fileSize: conversionResult.convertedSize,
+            conversionTime: conversionResult.conversionTime,
+            originalSize: conversionResult.originalSize,
+            sizeReduction: conversionResult.originalSize && conversionResult.convertedSize 
+              ? Math.round((1 - conversionResult.convertedSize / conversionResult.originalSize) * 100)
+              : null
+          };
+        } else {
+          // 转换失败，获取详细错误信息
+          const errorDetails = generateErrorDetails(new Error(conversionResult.message || '转换失败'));
+          console.error('IFC转换失败:', {
+            message: conversionResult.message,
+            errorDetails: errorDetails,
+            tempFile: tempFilePath,
+            tempFiles: tempFiles
+          });
+          
+          // 转换失败时保留临时文件，供调试和重试使用
+          console.log('转换失败，保留临时文件以供调试:', tempFiles);
+          
+          throw new Error('CONVERSION_FAILED: ' + conversionResult.message);
+        }
+      } catch (error) {
+        progressCallback(0, '转换失败');
+        const errorDetails = generateErrorDetails(error);
+        console.error('自动转换IFC失败:', {
+          error: error,
+          errorDetails: errorDetails,
+          fileName: file.originalname
+        });
+        
+        // 如果有错误详情，包含在错误中
+        if (errorDetails.code !== 'UNKNOWN_ERROR') {
+          throw new Error(`${errorDetails.code}: ${errorDetails.details}`);
+        } else {
+          throw error;
+        }
+      } finally {
+        // 清理临时文件（只清理输入文件，保留转换后的文件用于调试）
+        console.log('转换过程完成，清理临时输入文件');
+        const inputFiles = tempFiles.filter(file => file.includes('ifc_upload'));
+        if (inputFiles.length > 0) {
+          cleanupTempFiles(inputFiles);
+        } else {
+          // 如果没有输入文件，清理所有临时文件
+          cleanupTempFiles(tempFiles);
+        }
+        conversionProgressManager.removeCallback(conversionId);
+        
+        // 注意：转换后的输出文件会在ifcConversionService中清理或上传到MinIO后清理
       }
     }
-  }
 
-  // 不是IFC文件或转换失败，返回null
-  return null;
-}
+    // 不是IFC文件，返回null
+    return null;
+  }
 }
 
 export default ModelController;

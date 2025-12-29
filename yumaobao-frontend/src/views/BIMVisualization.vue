@@ -49,14 +49,7 @@
             :value="model.id"
           />
         </el-select>
-        <div class="floor-controls">
-          <el-button type="primary" size="small" @click="showPreviousFloor" :disabled="!canNavigateFloors">
-            <el-icon><ArrowUp /></el-icon>
-          </el-button>
-          <el-button type="primary" size="small" @click="showNextFloor" :disabled="!canNavigateFloors">
-            <el-icon><ArrowDown /></el-icon>
-          </el-button>
-        </div>
+
       </div>
       <div class="header-right">
         <el-button type="primary" @click="refreshViewer" icon="Refresh">
@@ -103,13 +96,31 @@
       <!-- CAD查看器（2D视图） -->
       <div class="cad-viewer-wrapper" v-else-if="selectedModel.type === '2d'">
         <div class="view-title">2D CAD视图</div>
-        <MlCadViewer
+        <div v-if="!modelFile" class="cad-placeholder">
+          <el-icon size="64">
+            <Document />
+          </el-icon>
+          <p>正在加载模型文件...</p>
+        </div>
+        <div v-else class="cad-container">
+          <!-- 使用条件渲染来避免初始化问题 -->
+          <div v-if="!showCadViewer" class="cad-placeholder">
+            <el-icon size="64">
+              <Document />
+            </el-icon>
+            <p>正在初始化查看器...</p>
+          </div>
+          <div v-else class="cad-viewer-container">
+            <MlCadViewer
           ref="cadViewerRef"
-          :locale="locale"
+          :key="cadViewerKey"
           :url="modelFile"
-          :use-main-thread-draw="config.cadViewer.useMainThreadDraw"
-          :base-url="config.assets.baseUrl"
+          :use-main-thread-draw="true"
+          @loaded="onViewerLoaded"
+          @error="onViewerError"
         />
+          </div>
+        </div>
       </div>
 
       <!-- 3D BIM模型视图 -->
@@ -207,7 +218,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { useUserStore } from '../stores/index.js'
@@ -251,6 +262,9 @@ const locale = ref('zh') // 语言设置，修复i18n错误
 const isBimModelLoaded = ref(false)
 const isThreeJsInitialized = ref(false)
 const refreshTimer = ref(null) // 自动刷新定时器
+// CAD查看器控制
+const showCadViewer = ref(false)
+const cadViewerKey = ref(0)
 
 // 数据
 const projects = ref([])
@@ -330,9 +344,7 @@ const filteredEmbeddedParts = computed(() => {
   return result
 })
 
-const canNavigateFloors = computed(() => {
-  return floors.value.length > 1
-})
+
 
 // 生命周期
 onMounted(() => {
@@ -667,14 +679,24 @@ const handleModelChange = async (modelId) => {
   if (!modelId) return
   
   selectedModelId.value = modelId
+  
+  // 首先隐藏查看器，避免初始化冲突
+  showCadViewer.value = false
+  cadViewerKey.value++
+  
   await getModelFile(modelId)
   
   // 根据模型类型自动切换视图
   if (selectedModel.value) {
     if (selectedModel.value.type === '2d') {
       currentView.value = '2d'
+      // 延迟显示CAD查看器，避免初始化冲突
+      setTimeout(() => {
+        showCadViewer.value = true
+      }, 500)
     } else if (selectedModel.value.type === '3d') {
       currentView.value = '3d'
+      showCadViewer.value = false // 3D模型不需要CAD查看器
     }
   }
 }
@@ -684,6 +706,30 @@ const handleStatusFilterChange = () => {
 }
 
 
+
+// 查看器相关方法
+const onViewerError = (error) => {
+  console.error('CAD查看器错误:', error)
+  
+  // 检查是否是 draw 方法相关的错误
+  if (error.message && (
+    error.message.includes('draw is not a function') || 
+    error.message.includes('batchConvert') ||
+    error.message.includes('TypeError') ||
+    error.message.includes('n.draw')
+  )) {
+    console.warn('检测到渲染相关错误，尝试重新初始化...')
+    ElMessage.warning('渲染初始化遇到问题，正在重新配置...')
+    
+    // 重新初始化查看器配置
+    setTimeout(() => {
+      refreshViewer()
+    }, 1500)
+    return
+  }
+  
+  ElMessage.error(`CAD查看器加载失败: ${error.message || '未知错误'}`)
+}
 
 // 查看器相关方法
 const onViewerLoaded = () => {
@@ -746,23 +792,7 @@ const highlightEmbeddedPart = (embeddedPart) => {
   }
 }
 
-const showPreviousFloor = () => {
-  const currentIndex = floors.value.findIndex(f => f.id === selectedFloorId.value)
-  if (currentIndex > 0) {
-    selectedFloorId.value = floors.value[currentIndex - 1].id
-    handleFloorChange(floors.value[currentIndex - 1].id)
-    updateVisibleEmbeddedParts()
-  }
-}
 
-const showNextFloor = () => {
-  const currentIndex = floors.value.findIndex(f => f.id === selectedFloorId.value)
-  if (currentIndex < floors.value.length - 1) {
-    selectedFloorId.value = floors.value[currentIndex + 1].id
-    handleFloorChange(floors.value[currentIndex + 1].id)
-    updateVisibleEmbeddedParts()
-  }
-}
 
 const zoomToExtent = () => {
   if (cadViewerRef.value) {
@@ -1359,7 +1389,6 @@ const highlightInBimViewer = (embeddedPart) => {
   color: #1E3A5F;
 }
 
-.floor-controls,
 .view-controls {
   display: flex;
   gap: 10px;
@@ -1420,6 +1449,15 @@ const highlightInBimViewer = (embeddedPart) => {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.cad-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 确保MlCadViewer组件能够正确填充父容器 */
@@ -1623,7 +1661,6 @@ const highlightInBimViewer = (embeddedPart) => {
   }
   
   /* 按钮组适配 */
-  .floor-controls,
   .view-controls {
     display: flex;
     flex-direction: row;
@@ -1631,7 +1668,6 @@ const highlightInBimViewer = (embeddedPart) => {
     margin-top: 12px;
   }
   
-  .floor-controls button,
   .view-controls button {
     flex: 1;
     min-width: 0; /* 允许按钮缩小 */
@@ -1795,12 +1831,10 @@ const highlightInBimViewer = (embeddedPart) => {
     min-height: 300px;
   }
   
-  .floor-controls,
   .view-controls {
     flex-direction: column;
   }
   
-  .floor-controls button,
   .view-controls button {
     width: 100%;
   }

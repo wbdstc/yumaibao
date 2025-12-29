@@ -21,29 +21,19 @@ const config = {
   },
   
   // CAD查看器配置
-  cadViewer: {
-    // Web Worker配置
-    enableWebWorker: false,
-    // 字体配置
-    defaultFont: 'Arial',
-    // 字体回退机制
-    fontFallbacks: ['Arial', 'Helvetica', 'sans-serif'],
-    // DWG处理配置
-    forceLayoutMode: true,
-    ignoreLayoutErrors: true,
-    maxEntities: 1000000,
-    // Worker模式配置
-    workerEnabled: false,
-    // Worker文件路径
-    workersUrl: './assets/',
-    // 渲染配置
-    useMainThreadDraw: true,
-    // UI配置
-    showFullUI: false,
-    showFileName: false,
-    showToolbars: false,
-    showStatusBar: false
-  },
+        cadViewer: {
+          // 字体配置
+          defaultFont: 'Arial',
+          // 字体回退机制
+          fontFallbacks: ['Arial', 'Helvetica', 'sans-serif'],
+          // 基本配置
+          maxEntities: 1000000,
+          // UI配置
+          showFullUI: false,
+          showFileName: false,
+          showToolbars: false,
+          showStatusBar: false
+        },
   
   // 国际化配置
   i18n: {

@@ -8,9 +8,16 @@ import router from '../router/index'
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api', // 设置为'/api'，确保请求路径符合代理配置要求
-  timeout: 10000 // 请求超时时间
+  timeout: 60000 // 基础请求超时时间增加到60秒
   // 不设置全局Content-Type，让axios根据请求数据自动设置
 })
+
+// 不同请求类型的超时时间配置
+const TIMEOUT_CONFIG = {
+  default: 60000,     // 默认60秒
+  upload: 300000,     // 文件上传5分钟
+  download: 120000    // 文件下载2分钟
+}
 
 // 请求拦截器 - 【已修复】
 api.interceptors.request.use(
@@ -115,16 +122,52 @@ api.interceptors.response.use(
           if (error.response.data && error.response.data.message) {
             errorMessage = `服务器错误：${error.response.data.message}`
           }
-          ElMessage.error(errorMessage)
+          ElMessage.error({
+            message: errorMessage,
+            duration: 5000,
+            showClose: true
+          })
           break
         default:
-          errorMessage = `请求错误：${error.response.data?.message || error.response.statusText || '未知错误'}`
-          ElMessage.error(errorMessage)
+          // 针对文件上传的错误，提供更具体的错误信息
+          if (error.config.url && error.config.url.includes('/models') && error.config.method === 'post') {
+            if (error.response.status === 413) {
+              errorMessage = '文件过大，请选择较小的文件或压缩后重试'
+            } else if (error.response.status === 415) {
+              errorMessage = '不支持的文件格式，请选择支持的格式'
+            } else if (error.response.status >= 500) {
+              errorMessage = '服务器处理文件时出错，请稍后重试'
+            } else {
+              errorMessage = `文件上传失败：${error.response.data?.message || error.response.statusText || '未知错误'}`
+            }
+          } else {
+            errorMessage = `请求错误：${error.response.data?.message || error.response.statusText || '未知错误'}`
+          }
+          
+          ElMessage.error({
+            message: errorMessage,
+            duration: 6000,
+            showClose: true
+          })
       }
     } else if (error.request) {
       // 请求已发出，但没有收到响应
-      console.error('响应拦截器：请求发出但未收到响应', error.request)
-      ElMessage.error('网络错误，服务器无响应')
+      // 如果是网络错误，提供更详细的诊断信息
+      if (error.message && error.message.includes('timeout')) {
+        errorMessage = `上传超时，请检查网络连接或文件是否过大。当前超时时间: ${TIMEOUT_CONFIG.upload / 1000}秒`
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = '请求被取消，可能由于网络不稳定'
+      } else if (error.message && error.message.includes('Network Error')) {
+        errorMessage = '网络连接错误，请检查网络设置或服务器状态'
+      } else {
+        errorMessage = `网络错误，服务器无响应: ${error.message || '未知错误'}`
+      }
+      
+      ElMessage.error({
+        message: errorMessage,
+        duration: 8000,
+        showClose: true
+      })
     } else {
       // 请求配置错误
       console.error('响应拦截器：请求配置错误', error.message)
@@ -212,6 +255,12 @@ export default {
   // 预埋件相关API
   embeddedPart: {
     getEmbeddedParts(params) {
+      // 如果有projectId，使用按项目查询的API
+      if (params && params.projectId) {
+        const { projectId, ...otherParams } = params
+        return api.get(`/embedded-parts/project/${projectId}`, { params: otherParams })
+      }
+      // 否则使用通用查询API
       return api.get('/embedded-parts', { params })
     },
     getEmbeddedPart(id) {
@@ -250,11 +299,24 @@ export default {
     downloadBIMModel(id, useLightweight = true) {
       return api.get(`/models/${id}/download`, { 
         responseType: 'blob',
-        params: { useLightweight } 
+        params: { useLightweight },
+        timeout: TIMEOUT_CONFIG.download
       })
     },
-    uploadBIMModel(data) {
-      return api.post('/models', data)
+    uploadBIMModel(data, onUploadProgress) {
+      return api.post('/models', data, {
+        timeout: TIMEOUT_CONFIG.upload,
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: onUploadProgress || function(progressEvent) {
+          // 默认进度回调
+          if (progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            console.log(`上传进度: ${progress}%`)
+          }
+        }
+      })
     },
     updateBIMModel(id, data) {
       return api.put(`/models/${id}`, data)

@@ -12,7 +12,21 @@ export interface IFCConversionParams {
   quality?: number; // 0-100
   includeMaterials?: boolean;
   includeTextures?: boolean;
+  timeout?: number; // 转换超时时间（毫秒）
 }
+
+// IFC转换状态类型
+export interface IFCConversionStatus {
+  status: 'pending' | 'running' | 'success' | 'error' | 'timeout';
+  progress: number; // 0-100
+  message: string;
+  startTime?: number;
+  endTime?: number;
+  conversionTime?: number;
+}
+
+// 转换状态回调函数类型
+export type ConversionProgressCallback = (status: IFCConversionStatus) => void;
 
 // IFC转换结果类型
 export interface IFCConversionResult {
@@ -103,6 +117,10 @@ class IFCConversionService {
       if (params.quality !== undefined) {
         commandArgs.push('--precision', params.quality.toString());
       }
+
+      // 添加 --yes 参数，自动覆盖已存在的文件
+      commandArgs.push('--yes');
+
       
       if (!params.includeMaterials) {
         commandArgs.push('--no-materials');

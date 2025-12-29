@@ -73,6 +73,8 @@ class IFCConversionService {
             if (params.quality !== undefined) {
                 commandArgs.push('--precision', params.quality.toString());
             }
+            // 添加 --yes 参数，自动覆盖已存在的文件
+            commandArgs.push('--yes');
             if (!params.includeMaterials) {
                 commandArgs.push('--no-materials');
             }

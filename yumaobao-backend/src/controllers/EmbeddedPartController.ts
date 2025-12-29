@@ -28,8 +28,8 @@ class EmbeddedPartController {
         return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      // 执行查询
-      const collection = db.collection('embeddedParts');
+      // 执行查询 - 使用与模型一致的集合名称
+      const collection = db.collection('embedded_parts');
       const [rows, total] = await Promise.all([
         collection.find(whereClause).sort({ createdAt: -1 }).skip(skip).limit(limitNum).toArray(),
         collection.countDocuments(whereClause)
@@ -117,7 +117,7 @@ class EmbeddedPartController {
   // 批量创建预埋件
   static async batchCreateEmbeddedParts(req: Request, res: Response) {
     try {
-      const parts = req.body.parts;
+      const parts = req.body;
       const createdParts = [];
 
       for (const part of parts) {
@@ -507,7 +507,7 @@ class EmbeddedPartController {
         return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      const stats = await db.collection('embeddedParts').aggregate([
+      const stats = await db.collection('embedded_parts').aggregate([
         { $match: { projectId } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
         { $project: { status: '$_id', count: 1, _id: 0 } }
