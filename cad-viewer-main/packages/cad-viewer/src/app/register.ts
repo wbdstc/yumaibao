@@ -10,17 +10,29 @@ import { MlPointStyleDlg, MlReplacementDlg } from '../component'
 import { useDialogManager } from '../composable'
 
 export const registerCmds = () => {
+  AcEdCommandStack.instance.removeCmd(
+    AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+    'la'
+  )
   AcEdCommandStack.instance.addCommand(
     AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
     'la',
     'la',
     new AcApLayerStateCmd()
   )
+  AcEdCommandStack.instance.removeCmd(
+    AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+    'md'
+  )
   AcEdCommandStack.instance.addCommand(
     AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
     'md',
     'md',
     new AcApMissedDataCmd()
+  )
+  AcEdCommandStack.instance.removeCmd(
+    AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+    'pttype'
   )
   AcEdCommandStack.instance.addCommand(
     AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,

@@ -96,7 +96,7 @@
       <!-- CAD查看器（2D视图） -->
       <div class="cad-viewer-wrapper" v-else-if="selectedModel.type === '2d'">
         <div class="view-title">2D CAD视图</div>
-        <div v-if="!modelFile" class="cad-placeholder">
+        <div v-if="!localCadFile" class="cad-placeholder">
           <el-icon size="64">
             <Document />
           </el-icon>
@@ -114,8 +114,10 @@
             <MlCadViewer
           ref="cadViewerRef"
           :key="cadViewerKey"
-          :url="modelFile"
-          :use-main-thread-draw="true"
+          :local-file="localCadFile"
+          :use-main-thread-draw="false"
+          base-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/"
+          locale="zh"
           @loaded="onViewerLoaded"
           @error="onViewerError"
         />
@@ -216,7 +218,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
+import { ref, shallowRef, reactive, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight } from '@element-plus/icons-vue'
 import api from '../api/index.js'
@@ -233,7 +235,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 const userStore = useUserStore()
 
 // 组件引用
-const cadViewerRef = ref(null)
+const cadViewerRef = shallowRef(null)
 const bimViewerRef = ref(null)
 
 // Three.js相关状态 - 使用普通变量，避免Vue响应式系统干扰
@@ -275,6 +277,7 @@ const layers = ref([])
 
 // 模型文件
 const modelFile = ref(null)
+const localCadFile = shallowRef(null)
 const selectedModel = ref(null)
 
 // 模型信息
@@ -400,6 +403,10 @@ onUnmounted(() => {
   window.removeEventListener('storage', (event) => {
     // 监听器函数被移除，无需具体实现
   })
+  // 释放 Blob URL
+  if (localCadFile.value && typeof localCadFile.value === 'string') {
+    URL.revokeObjectURL(localCadFile.value);
+  }
 })
 
 // 监听视图切换 - 直接放在script setup中，而不是onMounted中
@@ -559,7 +566,7 @@ const getEmbeddedParts = async (projectId, floorId = '') => {
 
 const getModelFile = async (modelId) => {
   try {
-    // 验证modelId
+    // 1. 基础验证
     if (!modelId) {
       throw new Error('模型ID不能为空')
     }
@@ -573,84 +580,92 @@ const getModelFile = async (modelId) => {
     selectedEmbeddedPart.value = null
     isBimModelLoaded.value = false
     
-    // 释放之前的模型文件URL，防止内存泄漏
-    if (modelFile.value) {
-      URL.revokeObjectURL(modelFile.value)
-      modelFile.value = null
+    // 释放之前的资源（如果需要）
+    if (localCadFile.value && typeof localCadFile.value === 'string') {
+       URL.revokeObjectURL(localCadFile.value)
     }
     
-    // 显示加载中提示
+    // 显示加载提示
     const loadingMessage = ElMessage({
       message: '正在加载模型文件...',
       duration: 0,
       type: 'info'
     })
     
-    // 根据模型类型加载不同的文件
+    // 3D模型跳过
     if (model.type === '3d') {
-      // 3D模型直接调用loadBimModel，不需要设置modelFile
       loadingMessage.close()
       isBimModelLoaded.value = false
-      // loadBimModel会在合适的时候被调用
       return
     }
     
-    // 2D模型继续使用原有的加载逻辑
-    // 从服务器加载模型文件
-    const response = await api.bimModel.downloadBIMModel(modelId, model.isLightweight)
+    // --- 【关键修改开始】使用原生 fetch 绕过 Axios ---
     
-    // 验证响应
-    if (!response) {
-      throw new Error('服务器返回空响应')
+    // 构造 URL (根据你 api/index.js 的 baseURL='/api' 推断)
+    // 注意：如果你的开发环境代理需要 '/api' 前缀，请保留；如果不需要，请去掉
+    const url = `/api/models/${modelId}/download?useLightweight=${model.isLightweight ? 'true' : 'false'}`;
+    const token = localStorage.getItem('token');
+
+    console.log('正在尝试使用原生 Fetch 下载:', url);
+
+    const fetchResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Authorization': token ? `Bearer ${token}` : ''
+            //以此处不添加 Content-Type 或 Accept，让浏览器保持默认，避免触发后端转换
+        }
+    });
+
+    if (!fetchResponse.ok) {
+        throw new Error(`文件下载失败: ${fetchResponse.status} ${fetchResponse.statusText}`);
     }
+
+    // 直接获取 Blob (这是最原始的二进制流，绝对纯净)
+    const finalBlob = await fetchResponse.blob();
+
+    // --- 【关键修改结束】 ---
+
+    // --- 诊断代码 (检查是否变回 AC 开头) ---
+    const buffer = await finalBlob.slice(0, 6).arrayBuffer();
+    const header = new TextDecoder().decode(buffer);
     
-    // 创建blob并验证大小
-    const blob = new Blob([response], { type: 'application/octet-stream' })
-    if (blob.size === 0) {
-      throw new Error('服务器返回空文件')
+    console.log('====== 终极文件诊断 (Fetch版) ======');
+    console.log('1. 文件大小:', finalBlob.size);
+    console.log('2. 文件头(String):', header);
+    
+    if (header.startsWith('AC')) {
+        console.log('🎉 成功！Fetch 获取到了正确的 CAD 文件头！问题出在 Axios 配置上。');
+    } else {
+        console.error('☠️ 失败！Fetch 获取的依然是乱码。说明后端接口本身返回的数据就是坏的！');
     }
-    
-    // 创建临时URL用于CAD-Viewer
-    modelFile.value = URL.createObjectURL(blob)
-    
+
+    // 检查文件大小
+    if (finalBlob.size === 0) {
+      throw new Error('服务器返回空文件');
+    }
+
+    // 创建 File 对象
+    const fileName = (selectedModel.value?.name || 'model') + (selectedModel.value?.extension || '.dwg');
+    const finalFile = new File([finalBlob], fileName, { type: 'application/octet-stream' });
+
+    // 赋值 (使用 markRaw 避免 Vue Proxy 代理)
+    localCadFile.value = markRaw(finalFile);
+
     // 加载该模型下的预埋件
     await getEmbeddedParts(selectedProjectId.value, selectedFloorId.value)
     
-    // 关闭加载提示
     loadingMessage.close()
+
   } catch (error) {
     console.error('获取模型文件失败:', error)
-    
-    // 关闭任何可能存在的加载提示
-    if (ElMessage.closeAll) {
-      ElMessage.closeAll()
-    }
-    
-    // 显示详细的错误信息
-    let errorMsg = '获取模型文件失败，请稍后重试'
-    if (error.message) {
-      errorMsg = `获取模型文件失败: ${error.message}`
-    } else if (error.response?.status === 404) {
-      errorMsg = '未找到模型文件或模型不存在'
-    } else if (error.response?.data?.message) {
-      errorMsg = `获取模型文件失败: ${error.response.data.message}`
-    } else if (error.response?.status) {
-      errorMsg = `获取模型文件失败: 服务器错误 ${error.response.status}`
-    }
-    
+    if (ElMessage.closeAll) ElMessage.closeAll()
     ElMessage.error({
-      message: errorMsg,
+      message: `获取模型文件失败: ${error.message}`,
       duration: 3000,
       type: 'error'
     })
-    
-    // 重置模型状态并清理资源
     selectedModel.value = null
-    if (modelFile.value) {
-      URL.revokeObjectURL(modelFile.value)
-      modelFile.value = null
-    }
-    isBimModelLoaded.value = false
+    localCadFile.value = null
   }
 }
 
@@ -680,23 +695,28 @@ const handleModelChange = async (modelId) => {
   
   selectedModelId.value = modelId
   
-  // 首先隐藏查看器，避免初始化冲突
+  // 1. 先彻底销毁组件
   showCadViewer.value = false
+  localCadFile.value = null // 清空数据源
   cadViewerKey.value++
   
+  // 2. 等待 DOM 更新
+  await nextTick()
+
+  // 3. 获取新数据 (这一步会生成新的 URL)
   await getModelFile(modelId)
   
-  // 根据模型类型自动切换视图
+  // 4. 显示组件
   if (selectedModel.value) {
     if (selectedModel.value.type === '2d') {
       currentView.value = '2d'
-      // 延迟显示CAD查看器，避免初始化冲突
-      setTimeout(() => {
+      
+      // 使用 nextTick 替代 setTimeout，更加稳定
+      nextTick(() => {
         showCadViewer.value = true
-      }, 500)
+      })
     } else if (selectedModel.value.type === '3d') {
       currentView.value = '3d'
-      showCadViewer.value = false // 3D模型不需要CAD查看器
     }
   }
 }

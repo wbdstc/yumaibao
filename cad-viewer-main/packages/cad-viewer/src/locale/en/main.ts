@@ -47,7 +47,7 @@ export default {
     },
     theme: {
       dark: 'Switch to dark theme',
-      light: 'Switch to light light'
+      light: 'Switch to light theme'
     },
     warning: {
       font: 'The following fonts are not found!'

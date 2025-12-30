@@ -1,5 +1,6 @@
 import { AcApI18n, AcEdCommandStack } from '@mlightcad/cad-simple-viewer'
 import { AcDbEntity } from '@mlightcad/data-model'
+import { merge } from 'lodash-es'
 import { createI18n } from 'vue-i18n'
 
 import enCommand from './en/command'
@@ -39,9 +40,11 @@ const messages = {
 AcApI18n.mergeLocaleMessage('en', messages.en)
 AcApI18n.mergeLocaleMessage('zh', messages.zh)
 
+const finalMessages = merge({}, AcApI18n.messages, messages)
+
 export const i18n = createI18n({
   legacy: false,
-  messages: AcApI18n.messages,
+  messages: finalMessages,
   locale: getInitialLocale(),
   fallbackLocale: 'en',
   allowComposition: true,

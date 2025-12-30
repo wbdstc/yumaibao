@@ -24,13 +24,13 @@ export function useLayers(editor: AcApDocManager) {
     for (const layer of layers) {
       reactiveLayers.push({
         name: layer.name,
-        color: layer.color.cssColor,
+        color: layer.color.cssColor || '#000000',
         isLocked: layer.isLocked,
         isHidden: layer.isHidden,
         isInUse: layer.isInUse,
         isOn: !layer.isOff,
         isPlottable: layer.isPlottable,
-        transparency: layer.transparency,
+        transparency: (layer.transparency as any).alpha ?? layer.transparency,
         linetype: layer.linetype,
         lineWeight: layer.lineWeight
       })
@@ -45,14 +45,16 @@ export function useLayers(editor: AcApDocManager) {
     if (layer) {
       layer = layer as LayerInfo
       const changes = args.changes
-      if (changes.color != null) layer.color = changes.color.cssColor
+      if (changes.color != null) layer.color = changes.color.cssColor || '#000000'
       if (changes.isLocoked != null) layer.isLocked = changes.isLocked
       if (changes.isHidden != null) layer.isHidden = changes.isHidden
       if (changes.isInUse != null) layer.isInUse = changes.isInUse
       if (changes.isOff != null) layer.isOn = !changes.isOff
       if (changes.isPlottable != null) layer.isPlottable = changes.isPlottable
-      if (changes.transparency != null)
-        layer.transparency = changes.transparency
+      if (changes.transparency != null) {
+        const t = changes.transparency as any
+        layer.transparency = typeof t === 'number' ? t : t.alpha
+      }
       if (changes.linetype != null) layer.linetype = changes.linetype
       if (changes.lineWeight != null) layer.lineWeight = changes.lineWeight
     }

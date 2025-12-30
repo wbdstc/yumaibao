@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import { createI18n } from 'vue-i18n'
 import './style.css'
 import App from './App.vue'
 
@@ -22,16 +21,14 @@ const app = createApp(App)
 import enLocale from './locales/en.json'
 import zhLocale from './locales/zh.json'
 
-// 创建并使用i18n实例
-const i18n = createI18n({
-  legacy: false,
-  locale: 'zh',
-  fallbackLocale: 'en',
-  messages: {
-    en: enLocale,
-    zh: zhLocale
-  }
-})
+// 使用CAD查看器内置的i18n并合并应用自有文案
+import { i18n } from '@mlightcad/cad-viewer'
+i18n.global.mergeLocaleMessage('en', enLocale)
+i18n.global.mergeLocaleMessage('zh', zhLocale)
+// 设置默认语言为中文
+if (i18n.global.locale && 'value' in i18n.global.locale) {
+  i18n.global.locale.value = 'zh'
+}
 
 // 注册Element Plus图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

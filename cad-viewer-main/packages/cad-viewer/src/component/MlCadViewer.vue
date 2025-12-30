@@ -147,6 +147,8 @@ const props = withDefaults(defineProps<Props>(), {
   showStatusBar: true
 })
 
+const emit = defineEmits(['loaded', 'error'])
+
 const { t } = useI18n()
 const { effectiveLocale, elementPlusLocale } = useLocale(props.locale)
 const { info, warning, error, success } = useNotificationCenter()
@@ -176,9 +178,15 @@ const showNotificationCenter = ref(false)
  * @param fileContent - File content as string (DXF) or ArrayBuffer (DWG)
  */
 const handleFileRead = async (fileName: string, fileContent: ArrayBuffer) => {
-  const options: AcDbOpenDatabaseOptions = { minimumChunkSize: 1000 }
-  await AcApDocManager.instance.openDocument(fileName, fileContent, options)
-  store.fileName = AcApDocManager.instance.curDocument.docTitle
+  try {
+    const options: AcDbOpenDatabaseOptions = { minimumChunkSize: 1000 }
+    await AcApDocManager.instance.openDocument(fileName, fileContent, options)
+    store.fileName = AcApDocManager.instance.curDocument.docTitle
+    emit('loaded', store.fileName)
+  } catch (err) {
+    console.error('Failed to handle file read:', err)
+    emit('error', err)
+  }
 }
 
 /**
@@ -192,8 +200,10 @@ const openFileFromUrl = async (url: string) => {
     const options: AcDbOpenDatabaseOptions = { minimumChunkSize: 1000 }
     await AcApDocManager.instance.openUrl(url, options)
     store.fileName = AcApDocManager.instance.curDocument.docTitle
+    emit('loaded', store.fileName)
   } catch (error) {
     console.error('Failed to open file from URL:', error)
+    emit('error', error)
     ElMessage({
       message: t('main.message.failedToOpenFile', { fileName: url }),
       grouping: true,
@@ -231,8 +241,10 @@ const openLocalFile = async (file: File) => {
     const options: AcDbOpenDatabaseOptions = { minimumChunkSize: 1000 }
     await AcApDocManager.instance.openDocument(file.name, fileContent, options)
     store.fileName = AcApDocManager.instance.curDocument.docTitle
+    emit('loaded', store.fileName)
   } catch (error) {
     console.error('Failed to open local file:', error)
+    emit('error', error)
     ElMessage({
       message: t('main.message.failedToOpenFile', { fileName: file.name }),
       grouping: true,
