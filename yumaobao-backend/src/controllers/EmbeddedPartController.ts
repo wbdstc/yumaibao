@@ -71,17 +71,17 @@ class EmbeddedPartController {
 
       // 生成二维码数据
       const qrCodeData = `${projectId}-${uuidv4()}`;
-      
+
       // 生成二维码图片到内存
       const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
       const qrCodeFileName = `${qrCodeData}.png`;
-      
+
       // 上传到MinIO
       const { url: qrCodeUrl } = await uploadFileToMinIO(
         'qrcodes',
-        { 
-          buffer: qrCodeBuffer, 
-          originalname: qrCodeFileName, 
+        {
+          buffer: qrCodeBuffer,
+          originalname: qrCodeFileName,
           mimetype: 'image/png',
           size: qrCodeBuffer.length,
           fieldname: 'qrcode',
@@ -121,21 +121,33 @@ class EmbeddedPartController {
       const createdParts = [];
 
       for (const part of parts) {
-        const { projectId, name, type, modelNumber, description, location, coordinates } = part;
-        
+        const {
+          projectId,
+          name,
+          type,
+          modelNumber,
+          description,
+          location,
+          coordinates,
+          code,
+          floorId,
+          notes,
+          coordinates2D
+        } = part;
+
         // 生成二维码数据
         const qrCodeData = `${projectId}-${uuidv4()}`;
-        
+
         // 生成二维码图片到内存
         const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
         const qrCodeFileName = `${qrCodeData}.png`;
-        
+
         // 上传到MinIO
         const { url: qrCodeUrl } = await uploadFileToMinIO(
           'qrcodes',
-          { 
-            buffer: qrCodeBuffer, 
-            originalname: qrCodeFileName, 
+          {
+            buffer: qrCodeBuffer,
+            originalname: qrCodeFileName,
             mimetype: 'image/png',
             size: qrCodeBuffer.length,
             fieldname: 'qrcode',
@@ -152,9 +164,13 @@ class EmbeddedPartController {
           name,
           type,
           modelNumber,
-          description,
+          description: description || notes, // 优先使用description，如果没有则使用notes
           location,
           coordinates,
+          code,
+          floorId,
+          notes,
+          coordinates2D,
           qrCodeData,
           qrCodeUrl
         });
@@ -186,11 +202,15 @@ class EmbeddedPartController {
       // 定义Excel行数据的类型
       interface ExcelRow {
         name?: string;
+        code?: string;
         type?: string;
         modelNumber?: string;
         location?: string;
+        floorId?: string;
         coordinates?: string | Record<string, any>;
+        coordinates2D?: string | Record<string, any>;
         description?: string;
+        notes?: string;
         [key: string]: any;
       }
 
@@ -207,32 +227,45 @@ class EmbeddedPartController {
         const row = data[i];
         try {
           // 验证必填字段
-          if (!row.name || !row.type || !row.modelNumber || !row.location || !row.coordinates) {
+          // 验证必填字段 - 让coordinates可选，因为可能只提供坐标XYZ或2D坐标
+          if (!row.name || !row.type || !row.modelNumber || !row.location) {
             errors.push({ row: i + 2, message: '缺少必填字段' });
             continue;
           }
 
-          // 解析坐标
-          let coordinates;
+          // 解析坐标 (coordinates)
+          let coordinates = row.coordinates;
           if (typeof row.coordinates === 'string') {
-            coordinates = JSON.parse(row.coordinates);
-          } else {
-            coordinates = row.coordinates;
+            try {
+              coordinates = JSON.parse(row.coordinates);
+            } catch (e) {
+              coordinates = undefined;
+            }
+          }
+
+          // 解析2D坐标 (coordinates2D)
+          let coordinates2D = row.coordinates2D;
+          if (typeof row.coordinates2D === 'string') {
+            try {
+              coordinates2D = JSON.parse(row.coordinates2D);
+            } catch (e) {
+              coordinates2D = undefined;
+            }
           }
 
           // 生成二维码数据
           const qrCodeData = `${projectId}-${uuidv4()}`;
-          
+
           // 生成二维码图片到内存
           const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
           const qrCodeFileName = `${qrCodeData}.png`;
-          
+
           // 上传到MinIO
           const { url: qrCodeUrl } = await uploadFileToMinIO(
             'qrcodes',
-            { 
-              buffer: qrCodeBuffer, 
-              originalname: qrCodeFileName, 
+            {
+              buffer: qrCodeBuffer,
+              originalname: qrCodeFileName,
               mimetype: 'image/png',
               size: qrCodeBuffer.length,
               fieldname: 'qrcode',
@@ -247,11 +280,15 @@ class EmbeddedPartController {
           const embeddedPart = await EmbeddedPart.create({
             projectId,
             name: row.name,
+            code: row.code,
             type: row.type,
             modelNumber: row.modelNumber,
-            description: row.description || '',
+            description: row.description || row.notes || '',
             location: row.location,
+            floorId: row.floorId,
             coordinates,
+            coordinates2D,
+            notes: row.notes || row.description || '',
             qrCodeData,
             qrCodeUrl
           });
@@ -311,7 +348,7 @@ class EmbeddedPartController {
       const updateData: Partial<EmbeddedPartCreationAttributes> = {
         status: status as 'pending' | 'installed' | 'inspected' | 'rejected'
       };
-      
+
       if (status === 'installed') {
         updateData.installationDate = new Date();
       } else if (status === 'inspected' || status === 'rejected') {
@@ -386,9 +423,9 @@ class EmbeddedPartController {
   static async getEmbeddedPartsByFloor(req: Request, res: Response) {
     try {
       const { projectId, floorId } = req.params;
-      const embeddedParts = await EmbeddedPart.findAll({ 
+      const embeddedParts = await EmbeddedPart.findAll({
         projectId,
-        location: { $regex: floorId, $options: 'i' } 
+        location: { $regex: floorId, $options: 'i' }
       });
       return res.status(200).json(embeddedParts);
     } catch (error) {
@@ -432,7 +469,7 @@ class EmbeddedPartController {
       res.setHeader('Content-Type', 'image/png'); // 假设二维码是PNG格式
       res.setHeader('Content-Length', fileBuffer.length);
       res.setHeader('Content-Transfer-Encoding', 'binary');
-      
+
       // 使用 write 和 end 确保二进制数据不被转换
       res.write(fileBuffer, 'binary');
       return res.end();
@@ -506,7 +543,7 @@ class EmbeddedPartController {
     try {
       const { projectId } = req.params;
       const db = getDB();
-      
+
       if (!db) {
         return res.status(500).json({ message: '数据库连接失败' });
       }

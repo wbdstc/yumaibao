@@ -1,16 +1,13 @@
 <template>
   <div class="bim-visualization">
-    <!-- 页面顶部 -->
-    <div class="page-header">
-      <div class="header-left">
-        <h2>BIM</h2>
+    <!-- 顶部工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-left">
         <el-select
           v-model="selectedProjectId"
           placeholder="选择项目"
-          class="project-select"
-          :clearable="!isRestrictedUser"
-          :disabled="isRestrictedUser"
           @change="handleProjectChange"
+          style="width: 200px; margin-right: 10px"
         >
           <el-option
             v-for="project in projects"
@@ -22,10 +19,9 @@
         <el-select
           v-model="selectedFloorId"
           placeholder="选择楼层"
-          class="floor-select"
-          filterable
-          :disabled="!selectedProjectId"
           @change="handleFloorChange"
+          :disabled="!selectedProjectId"
+          style="width: 150px; margin-right: 10px"
         >
           <el-option
             v-for="floor in floors"
@@ -35,18 +31,18 @@
           />
         </el-select>
         <el-select
-          v-model="selectedModelId"
-          placeholder="选择模型"
-          class="model-select"
-          filterable
-          :disabled="!selectedProjectId || models.length === 0"
+          v-model="selectedModel"
+          placeholder="选择3D模型"
+          value-key="id"
           @change="handleModelChange"
+          :disabled="!selectedFloorId"
+          style="width: 250px; margin-right: 10px"
         >
           <el-option
-            v-for="model in models"
+            v-for="model in filteredModels"
             :key="model.id"
             :label="model.name"
-            :value="model.id"
+            :value="model"
           />
         </el-select>
 
@@ -58,31 +54,16 @@
       </div>
     </div>
 
-    
-
+    <!-- 主要内容区域 -->
+    <div class="page-content">
     <!-- 模型显示区域 -->
     <div class="model-container">
-      <!-- 模型视图切换和操作 -->
+      <!-- 模型视图切换 -->
       <div class="view-switcher">
         <el-radio-group v-model="currentView" size="small">
           <el-radio-button label="2d">2D CAD视图</el-radio-button>
           <el-radio-button label="3d">3D BIM视图</el-radio-button>
-          <el-radio-button label="both">双视图</el-radio-button>
         </el-radio-group>
-        <el-checkbox v-model="enableCoordinateSync" size="small" class="sync-checkbox">
-          <el-icon><RefreshRight /></el-icon>坐标同步
-        </el-checkbox>
-        <div class="view-controls">
-          <el-button type="primary" size="small" @click="zoomToExtent" icon="FullScreen">
-            全屏显示
-          </el-button>
-          <el-button type="success" size="small" @click="toggleGrid" icon="Grid">
-            {{ showGrid ? '隐藏网格' : '显示网格' }}
-          </el-button>
-          <el-button type="warning" size="small" @click="toggleLayers" icon="Collection">
-            图层管理
-          </el-button>
-        </div>
       </div>
 
       <!-- 未选择模型时的提示 -->
@@ -141,35 +122,41 @@
     <!-- 预埋件列表 -->
     <div class="embedded-parts-panel">
       <div class="panel-header">
-        <h3>预埋件列表 ({{ filteredEmbeddedParts.length }})</h3>
-        <div class="panel-actions">
-          <el-button 
-            type="primary" 
-            size="small" 
-            icon="RefreshRight" 
-            @click="refreshEmbeddedPartsIn3D"
-            v-if="filteredEmbeddedParts.length > 0"
-            :disabled="!scene || !isThreeJsInitialized"
-          >
-            刷新3D显示
-          </el-button>
-          <el-input
-            v-model="embeddedPartSearch"
-            placeholder="搜索预埋件"
-            clearable
-            size="small"
-            class="search-input"
-          />
+        <div class="header-title">
+          <h3>预埋件列表</h3>
+          <span class="count-badge">{{ filteredEmbeddedParts.length }}</span>
         </div>
+        <el-button 
+          type="primary" 
+          size="small" 
+          icon="RefreshRight" 
+          @click="refreshEmbeddedPartsIn3D"
+          v-if="filteredEmbeddedParts.length > 0"
+          :disabled="!scene || !isThreeJsInitialized"
+          style="margin-bottom: 8px"
+        >
+          刷新3D
+        </el-button>
       </div>
-      <!-- 状态筛选 -->
-      <div class="status-filter">
-        <el-checkbox-group v-model="selectedStatuses" @change="handleStatusFilterChange" size="small">
-          <el-checkbox label="pending" border>待安装</el-checkbox>
-          <el-checkbox label="installed" border>已安装</el-checkbox>
-          <el-checkbox label="inspected" border>已验收</el-checkbox>
-          <el-checkbox label="completed" border>已完成</el-checkbox>
-        </el-checkbox-group>
+      
+      <!-- 搜索和筛选 -->
+      <div class="search-filter-section">
+        <el-input
+          v-model="embeddedPartSearch"
+          placeholder="搜索预埋件名称/编号"
+          clearable
+          size="small"
+          prefix-icon="Search"
+          class="search-input-full"
+        />
+        <div class="status-filter">
+          <el-checkbox-group v-model="statusFilter" size="small">
+            <el-checkbox label="待安装" value="pending" />
+            <el-checkbox label="已安装" value="installed" />
+            <el-checkbox label="已验收" value="inspected" />
+            <el-checkbox label="已完成" value="completed" />
+          </el-checkbox-group>
+        </div>
       </div>
       <div class="embedded-parts-list">
         <div
@@ -184,29 +171,32 @@
           }"
           @click="highlightEmbeddedPart(embeddedPart)"
         >
-          <div class="item-header">
-            <div class="item-title">{{ embeddedPart.name }}</div>
-            <el-tag
-              :type="
-                embeddedPart.status === 'pending' ? 'info' :
-                embeddedPart.status === 'installed' ? 'success' :
-                embeddedPart.status === 'inspected' ? 'warning' : 'success'
-              "
+          <div class="item-content">
+            <div class="item-main">
+              <div class="item-title">
+                <span class="item-name">{{ embeddedPart.name }}</span>
+                <span class="item-code">{{ embeddedPart.code }}</span>
+              </div>
+              <div class="item-info">
+                <span class="info-label">型号:</span>
+                <span class="info-value">{{ embeddedPart.modelNumber }}</span>
+                <span class="info-divider">|</span>
+                <span class="info-label">位置:</span>
+                <span class="info-value">{{ embeddedPart.location }}</span>
+              </div>
+            </div>
+            <el-tag 
+              :type="getStatusTagType(embeddedPart.status)" 
               size="small"
+              class="status-tag"
             >
-              {{ embeddedPart.status === 'pending' ? '待安装' :
-                embeddedPart.status === 'installed' ? '已安装' :
-                embeddedPart.status === 'inspected' ? '已验收' : '已完成' }}
+              {{ getStatusLabel(embeddedPart.status) }}
             </el-tag>
-          </div>
-          <div class="item-info">
-            <div class="info-item">编号: {{ embeddedPart.code }}</div>
-            <div class="info-item">型号: {{ embeddedPart.modelNumber }}</div>
-            <div class="info-item">位置: {{ embeddedPart.location }}</div>
           </div>
         </div>
       </div>
     </div>
+    </div> <!-- 关闭page-content -->
 
 
 
@@ -450,6 +440,37 @@ onUnmounted(() => {
     URL.revokeObjectURL(localCadFile.value);
   }
 })
+
+// 根据选中的楼层过滤模型
+const filteredModels = computed(() => {
+  if (!selectedFloorId.value) {
+    return models.value
+  }
+  // 只显示选中楼层的模型
+  return models.value.filter(model => model.floorId === selectedFloorId.value)
+})
+
+// 获取状态标签类型
+const getStatusTagType = (status) => {
+  const typeMap = {
+    'pending': 'warning',
+    'installed': 'success',
+    'inspected': 'primary',
+    'completed': ''
+  }
+  return typeMap[status] || ''
+}
+
+// 获取状态标签文字
+const getStatusLabel = (status) => {
+  const labelMap = {
+    'pending': '待安装',
+    'installed': '已安装',
+    'inspected': '已验收',
+    'completed': '已完成'
+  }
+  return labelMap[status] || status
+}
 
 // 监听视图切换 - 直接放在script setup中，而不是onMounted中
 watch(currentView, (newView) => {
@@ -779,10 +800,12 @@ const handleFloorChange = async (floorId) => {
   console.log('🔄 楼层切换，当前预埋件:', embeddedParts.value.length, '个')
 }
 
-const handleModelChange = async (modelId) => {
-  if (!modelId) return
+const handleModelChange = async (model) => {
+  if (!model) return
   
+  const modelId = model.id
   selectedModelId.value = modelId
+  selectedModel.value = model
   
   // 1. 【关键】彻底销毁组件，并清理资源
   showCadViewer.value = false
@@ -809,9 +832,7 @@ const handleModelChange = async (modelId) => {
     } else if (selectedModel.value.type === '3d') {
       currentView.value = '3d'
       showCadViewer.value = false
-      nextTick(() => {
-        loadBimModel()
-      })
+      await loadBimModel()
     }
   }
 }
@@ -1647,31 +1668,25 @@ const highlightInBimViewer = (embeddedPart) => {
   })
 }
 
-
 </script>
 
 <style scoped>
 .bim-visualization {
-  padding: 20px;
-  display: grid;
-  grid-template-areas:
-    "header header"
-    "model parts";
-  grid-template-columns: 1fr 320px;
-  grid-template-rows: auto 1fr;
-  gap: 20px;
-  height: calc(100vh - 40px);
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f7fa;
+  overflow: hidden;
 }
 
-.page-header {
-  grid-area: header;
+.toolbar {
+  background-color: #fff;
+  padding: 14px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
-  display: flex;
+  flex-shrink: 0;
+  z-index: 10;
   align-items: center;
   gap: 20px;
 }
@@ -1720,23 +1735,26 @@ const highlightInBimViewer = (embeddedPart) => {
   margin-top: 10px;
 }
 
-.model-container {
-  grid-area: model;
-  border-radius: 8px;
+.page-content {
+  flex: 1;
+  display: flex;
   overflow: hidden;
+}
+
+.model-container {
+  flex: 1;
   background-color: #f5f7fa;
   position: relative;
-  height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
-  border: 1px solid #ebeef5;
+  overflow: hidden;
 }
 
 .view-switcher {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  padding: 10px 15px;
+  padding: 12px 20px;
   background-color: #fff;
   border-bottom: 1px solid #ebeef5;
 }
@@ -1853,68 +1871,165 @@ const highlightInBimViewer = (embeddedPart) => {
   color: #909399;
 }
 
+/* 预埋件面板 */
 .embedded-parts-panel {
-  grid-area: parts;
+  width: 380px;
+  background-color: #fff;
+  border-left: 1px solid #e4e7ed;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 120px);
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   overflow: hidden;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.04);
 }
 
 .panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 20px;
+  padding: 20px;
   border-bottom: 1px solid #ebeef5;
+  background: linear-gradient(to bottom, #ffffff, #fafbfc);
 }
 
-.panel-header h3 {
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.header-title h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #303133;
 }
 
-.search-input {
-  width: 180px;
+.count-badge {
+  background: linear-gradient(135deg, #409eff, #66b1ff);
+  color: white;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(64, 158, 255, 0.3);
 }
 
+.search-filter-section {
+  padding: 0;
+}
+
+.search-input-full {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.status-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-filter .el-checkbox {
+  margin-right: 0;
+}
+
+/* 预埋件列表 */
 .embedded-parts-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 12px 16px;
+  background-color: #fafbfc;
 }
 
 .embedded-part-item {
-  padding: 15px;
-  margin-bottom: 10px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
+  background-color: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .embedded-part-item:hover {
-  background-color: #ecf5ff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #409eff;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+  transform: translateY(-2px);
 }
 
-.embedded-part-item.status-pending {
-  border-left: 4px solid #409eff;
+.item-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.embedded-part-item.status-installed {
-  border-left: 4px solid #67c23a;
+.item-main {
+  flex: 1;
+  min-width: 0;
 }
 
-.embedded-part-item.status-inspected {
-  border-left: 4px solid #e6a23c;
+.item-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.embedded-part-item.status-completed {
-  border-left: 4px solid #909399;
+.item-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.item-code {
+  font-size: 12px;
+  color: #909399;
+  background-color: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.item-info {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+}
+
+.info-label {
+  color: #909399;
+  font-weight: 500;
+}
+
+.info-value {
+  color: #303133;
+  margin-right: 6px;
+}
+
+.info-divider {
+  color: #dcdfe6;
+  margin: 0 6px;
+}
+
+.status-tag {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+/* 状态颜色 */
+.status-pending {
+  border-left: 3px solid #ff9800;
+}
+
+.status-installed {
+  border-left: 3px solid #4caf50;
+}
+
+.status-inspected {
+  border-left: 3px solid #2196f3;
+}
+
+.status-completed {
+  border-left: 3px solid #9e9e9e;
 }
 
 .item-header {

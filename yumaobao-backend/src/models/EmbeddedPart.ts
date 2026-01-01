@@ -11,10 +11,13 @@ export interface EmbeddedPartAttributes {
   modelNumber: string;
   description?: string;
   location: string;
-  coordinates: any; // JSON格式的三维坐标
+  floorId?: string;
+  coordinates?: any; // JSON格式的三维坐标
+  coordinates2D?: any; // JSON格式的二维坐标
+  code?: string;
   qrCodeData: string;
   qrCodeUrl: string;
-  status: 'pending' | 'installed' | 'inspected' | 'rejected';
+  status: 'pending' | 'installed' | 'inspected' | 'rejected' | 'completed';
   installationDate?: Date;
   inspectorId?: string;
   inspectionDate?: Date;
@@ -31,10 +34,13 @@ export interface EmbeddedPartCreationAttributes {
   modelNumber: string;
   description?: string;
   location: string;
-  coordinates: any;
+  floorId?: string;
+  coordinates?: any;
+  coordinates2D?: any;
+  code?: string;
   qrCodeData: string;
   qrCodeUrl: string;
-  status?: 'pending' | 'installed' | 'inspected' | 'rejected';
+  status?: 'pending' | 'installed' | 'inspected' | 'rejected' | 'completed';
   installationDate?: Date;
   inspectorId?: string;
   inspectionDate?: Date;

@@ -891,12 +891,23 @@ export default {
         console.log('当前项目ID:', searchForm.projectId)
         
         // 为每条数据添加项目ID和默认状态
-        const dataWithProject = data.map(item => ({
-          ...item,
-          projectId: searchForm.projectId,
-          // 确保状态字段存在
-          status: item.status || 'pending'
-        }))
+        const dataWithProject = data.map(item => {
+          const newItem = {
+            ...item,
+            projectId: searchForm.projectId,
+            status: item.status || 'pending'
+          }
+          
+          // 处理坐标：如果Excel中有coordinateX和coordinateY，构建coordinates2D对象
+          if (item.coordinateX !== undefined && item.coordinateY !== undefined) {
+            newItem.coordinates2D = {
+              x: Number(item.coordinateX),
+              y: Number(item.coordinateY)
+            }
+          }
+          
+          return newItem
+        })
         
         console.log('处理后的数据:', dataWithProject)
         
@@ -936,7 +947,9 @@ export default {
           location: '一层A区',
           floorId: sampleFloorId,
           status: 'pending',
-          description: '示例说明'
+          coordinateX: 1000,
+          coordinateY: 2000,
+          notes: '示例说明1'
         },
         {
           name: '预埋件2',
@@ -946,7 +959,9 @@ export default {
           location: '二层B区',
           floorId: sampleFloorId,
           status: 'pending',
-          description: '示例说明'
+          coordinateX: 1500,
+          coordinateY: 2500,
+          notes: '示例说明2'
         }
       ]
       
