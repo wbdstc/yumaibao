@@ -1,4 +1,5 @@
 import { minioClient } from '../config/minio';
+import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
 
@@ -195,6 +196,17 @@ const sanitizeFileName = (fileName: string): string => {
   }
 };
 
+// 新增：获取文件流（推荐用于下载）
+export const getFileStreamFromMinIO = async (bucketName: string, objectName: string): Promise<Readable> => {
+  try {
+    // 直接返回 MinIO 的原始流
+    return await minioClient.getObject(bucketName, objectName);
+  } catch (error) {
+    console.error('获取文件流失败:', error);
+    throw error;
+  }
+};
+
 // 工具函数：生成安全的临时文件路径
 export const generateSafeTempFilePath = (originalFileName: string, prefix: string = 'temp'): string => {
   try {
@@ -307,11 +319,24 @@ export const downloadFileFromMinIO = async (bucketName: string, objectName: stri
     const stream = await minioClient.getObject(bucketName, objectName);
     const chunks: Buffer[] = [];
     
+    // 确保以二进制模式读取流
     for await (const chunk of stream) {
-      chunks.push(chunk);
+      // 确保chunk是Buffer类型，避免编码转换
+      if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      } else {
+        // 如果不是Buffer，转换为Buffer（保持二进制数据）
+        chunks.push(Buffer.from(chunk));
+      }
     }
     
-    return Buffer.concat(chunks);
+    // 拼接所有chunks，保持二进制数据完整性
+    const resultBuffer = Buffer.concat(chunks);
+    
+    // 记录下载的文件大小，用于调试
+    console.log(`从MinIO下载文件: bucket=${bucketName}, object=${objectName}, size=${resultBuffer.length}字节`);
+    
+    return resultBuffer;
   } catch (error) {
     console.error('下载文件失败:', error);
     throw error;

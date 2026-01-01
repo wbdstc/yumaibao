@@ -7,6 +7,7 @@ import Project from '../models/Project';
 import Floor from '../models/Floor';
 import { 
   uploadFileToMinIO, 
+  getFileStreamFromMinIO,
   downloadFileFromMinIO, 
   deleteFileFromMinIO,
   generateSafeTempFilePath,
@@ -479,7 +480,7 @@ static async processLightweightModel(originalFilePath: string, originalFilename:
   static async downloadModel(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      let model = await Model.findById(id);
+      const model = await Model.findById(id);
 
       if (!model) {
         return res.status(404).json({ message: '模型不存在' });
@@ -491,21 +492,38 @@ static async processLightweightModel(originalFilePath: string, originalFilename:
         return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      // 1. 首先尝试查找当前模型的文件记录
-      let fileRecord = await (db as any).collection('modelFiles').findOne({ modelId: model.id });
+      // 1. 获取文件记录
+      const fileRecord = await (db as any).collection('modelFiles').findOne({ modelId: model.id });
       
-      // 2. 如果找到了文件记录，直接使用
       if (fileRecord) {
         try {
-          // 从MinIO下载文件
-          const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
-
-          // 设置响应头并下载文件
+          // [修复]：获取流而不是Buffer
+          const fileStream = await getFileStreamFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+          
           const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
+          
+          // 设置响应头
           res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-          res.setHeader('Content-Type', 'application/octet-stream');
-          res.setHeader('Content-Length', fileBuffer.length);
-          return res.send(fileBuffer);
+          res.setHeader('Content-Type', 'application/octet-stream'); // 强制二进制流
+          // 注意：使用流传输时，Content-Length 往往难以预先获取，除非从 fileRecord 中读取 fileSize
+          // 如果数据库里存了 size，最好加上：res.setHeader('Content-Length', fileRecord.size);
+          
+          // [核心修复]：直接使用 pipe 将 MinIO 流对接给响应
+          // 这完全绕过了 Node.js 的字符串编码处理，保证 100% 二进制安全
+          fileStream.pipe(res);
+          
+          // 处理流过程中的错误（避免流断开导致服务器崩溃）
+          fileStream.on('error', (streamErr: any) => {
+            console.error('流传输过程中出错:', streamErr);
+            if (!res.headersSent) {
+               res.status(500).json({ message: '流传输失败' });
+            } else {
+               res.end();
+            }
+          });
+
+          return; // pipe 会自动处理 end()，这里直接返回即可
+
         } catch (minioError) {
           console.error('从文件记录下载文件失败:', minioError);
           // 检查是否是MinIO连接错误
@@ -575,14 +593,28 @@ static async processLightweightModel(originalFilePath: string, originalFilename:
       if (!fileRecord) {
         return res.status(404).json({ message: '缩略图文件记录不存在' });
       }
-
-      // 从MinIO下载文件
-      const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
-
-      // 设置响应头并返回文件
-      res.setHeader('Content-Type', 'image/png'); // 假设缩略图是PNG格式
-      res.setHeader('Content-Length', fileBuffer.length);
-      return res.send(fileBuffer);
+      try {
+        // [优化]：此处也改为流式传输，与 downloadModel 保持一致
+        const fileStream = await getFileStreamFromMinIO(fileRecord.bucketName, fileRecord.objectName);
+  
+        res.setHeader('Content-Type', 'image/png'); 
+        // res.setHeader('Content-Length', ...); // 如果数据库没存大小，流式传输可以省略此头
+  
+        // 直接管道输出
+        fileStream.pipe(res);
+        
+        fileStream.on('error', (err) => {
+           console.error('缩略图流传输失败:', err);
+           res.end(); 
+        });
+  
+      } catch (minioError) {
+        console.error('MinIO读取失败:', minioError);
+        return res.status(500).json({ message: '读取缩略图失败' });
+      }
+  
+      return; // 确保所有路径都有返回值
+  
     } catch (error) {
       console.error('获取缩略图失败:', error);
       return res.status(500).json({ message: '获取缩略图失败', error: String(error) });

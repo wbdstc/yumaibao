@@ -231,6 +231,25 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
+// --- 【核心修复补丁】开始 ---
+// 解决 TypeError: u.addUpdateRange is not a function 报错
+if (THREE.BufferAttribute && !THREE.BufferAttribute.prototype.addUpdateRange) {
+  THREE.BufferAttribute.prototype.addUpdateRange = function(start, count) {
+    const updateRange = this.updateRange;
+    if (updateRange.count === -1) {
+      updateRange.offset = start;
+      updateRange.count = count;
+    } else {
+      const oldEnd = updateRange.offset + updateRange.count;
+      const newEnd = start + count;
+      updateRange.offset = Math.min(updateRange.offset, start);
+      updateRange.count = Math.max(oldEnd, newEnd) - updateRange.offset;
+    }
+  };
+  console.log('✅ 已成功注入 addUpdateRange 补丁');
+}
+// --- 【核心修复补丁】结束 ---
+
 // 创建userStore实例
 const userStore = useUserStore()
 
@@ -566,7 +585,7 @@ const getEmbeddedParts = async (projectId, floorId = '') => {
 
 const getModelFile = async (modelId) => {
   try {
-    // 1. 基础验证
+    // 1. Basic Validation
     if (!modelId) {
       throw new Error('模型ID不能为空')
     }
@@ -580,29 +599,25 @@ const getModelFile = async (modelId) => {
     selectedEmbeddedPart.value = null
     isBimModelLoaded.value = false
     
-    // 释放之前的资源（如果需要）
+    // Release previous URL to prevent memory leaks
     if (localCadFile.value && typeof localCadFile.value === 'string') {
        URL.revokeObjectURL(localCadFile.value)
     }
     
-    // 显示加载提示
     const loadingMessage = ElMessage({
       message: '正在加载模型文件...',
       duration: 0,
       type: 'info'
     })
     
-    // 3D模型跳过
+    // Skip for 3D models
     if (model.type === '3d') {
       loadingMessage.close()
       isBimModelLoaded.value = false
       return
     }
     
-    // --- 【关键修改开始】使用原生 fetch 绕过 Axios ---
-    
-    // 构造 URL (根据你 api/index.js 的 baseURL='/api' 推断)
-    // 注意：如果你的开发环境代理需要 '/api' 前缀，请保留；如果不需要，请去掉
+    // --- Step 1: Fetch Data (Bypassing Axios) ---
     const url = `/api/models/${modelId}/download?useLightweight=${model.isLightweight ? 'true' : 'false'}`;
     const token = localStorage.getItem('token');
 
@@ -612,7 +627,6 @@ const getModelFile = async (modelId) => {
         method: 'GET',
         headers: {
             'Authorization': token ? `Bearer ${token}` : ''
-            //以此处不添加 Content-Type 或 Accept，让浏览器保持默认，避免触发后端转换
         }
     });
 
@@ -620,38 +634,47 @@ const getModelFile = async (modelId) => {
         throw new Error(`文件下载失败: ${fetchResponse.status} ${fetchResponse.statusText}`);
     }
 
-    // 直接获取 Blob (这是最原始的二进制流，绝对纯净)
-    const finalBlob = await fetchResponse.blob();
+    const finalBlob = await fetchResponse.blob(); // Define ONCE here
 
-    // --- 【关键修改结束】 ---
-
-    // --- 诊断代码 (检查是否变回 AC 开头) ---
+    // --- Step 2: Diagnostic & Correction ---
+    // Read first 6 bytes to check header
     const buffer = await finalBlob.slice(0, 6).arrayBuffer();
     const header = new TextDecoder().decode(buffer);
     
-    console.log('====== 终极文件诊断 (Fetch版) ======');
-    console.log('1. 文件大小:', finalBlob.size);
-    console.log('2. 文件头(String):', header);
+    console.log('====== 文件格式诊断 ======');
+    console.log('1. 文件头(String):', header);
     
-    if (header.startsWith('AC')) {
-        console.log('🎉 成功！Fetch 获取到了正确的 CAD 文件头！问题出在 Axios 配置上。');
-    } else {
-        console.error('☠️ 失败！Fetch 获取的依然是乱码。说明后端接口本身返回的数据就是坏的！');
+    // Auto-correct extension based on header
+    let realExtension = '.dwg'; // Default
+    
+    // DXF Detection: Starts with "  0" or "0\n"
+    if (header.includes('0') && (header.includes('S') || header.includes('s'))) {
+        realExtension = '.dxf';
+        console.log('🔍 自动检测：这是一个 DXF 文件，强制修正后缀为 .dxf');
+    } else if (header.startsWith('AC')) {
+        realExtension = '.dwg';
+        console.log('🔍 自动检测：这是一个 DWG 文件');
     }
 
-    // 检查文件大小
     if (finalBlob.size === 0) {
       throw new Error('服务器返回空文件');
     }
 
-    // 创建 File 对象
-    const fileName = (selectedModel.value?.name || 'model') + (selectedModel.value?.extension || '.dwg');
-    const finalFile = new File([finalBlob], fileName, { type: 'application/octet-stream' });
+    // Create File with CORRECT extension
+    const baseName = selectedModel.value?.name || 'temp_model';
+    // Ensure filename ends with correct extension
+    const finalFileName = baseName.toLowerCase().endsWith(realExtension) 
+        ? baseName 
+        : (baseName + realExtension);
+    
+    console.log('📄 最终传给组件的文件名:', finalFileName);
 
-    // 赋值 (使用 markRaw 避免 Vue Proxy 代理)
+    const finalFile = new File([finalBlob], finalFileName, { type: 'application/octet-stream' });
+
+    // --- Step 3: Assign to Component ---
     localCadFile.value = markRaw(finalFile);
 
-    // 加载该模型下的预埋件
+    // Load parts
     await getEmbeddedParts(selectedProjectId.value, selectedFloorId.value)
     
     loadingMessage.close()
@@ -695,28 +718,34 @@ const handleModelChange = async (modelId) => {
   
   selectedModelId.value = modelId
   
-  // 1. 先彻底销毁组件
+  // 1. 【关键】彻底销毁组件，并清理资源
   showCadViewer.value = false
-  localCadFile.value = null // 清空数据源
-  cadViewerKey.value++
+  // 释放旧的 URL 对象，防止内存泄漏
+  if (localCadFile.value && typeof localCadFile.value === 'string') {
+    URL.revokeObjectURL(localCadFile.value)
+  }
+  localCadFile.value = null 
+  cadViewerKey.value++ // 强制 Key 变化
   
-  // 2. 等待 DOM 更新
-  await nextTick()
-
-  // 3. 获取新数据 (这一步会生成新的 URL)
+  // 2. 获取新数据
+  // 注意：getModelFile 内部现在是用 fetch 获取 Blob URL
   await getModelFile(modelId)
   
-  // 4. 显示组件
+  // 3. 【关键】增加延迟，给 Vue 和 CAD 库足够的销毁时间
+  // 之前的 nextTick 可能太快了，导致旧的 command stack 还没释放
   if (selectedModel.value) {
     if (selectedModel.value.type === '2d') {
       currentView.value = '2d'
       
-      // 使用 nextTick 替代 setTimeout，更加稳定
-      nextTick(() => {
+      setTimeout(() => {
         showCadViewer.value = true
-      })
+      }, 100) // 给 100ms 的缓冲时间让旧实例彻底卸载
     } else if (selectedModel.value.type === '3d') {
       currentView.value = '3d'
+      showCadViewer.value = false
+      nextTick(() => {
+        loadBimModel()
+      })
     }
   }
 }

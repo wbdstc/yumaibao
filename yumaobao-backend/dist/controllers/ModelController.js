@@ -441,12 +441,15 @@ class ModelController {
                 try {
                     // 从MinIO下载文件
                     const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
-                    // 设置响应头并下载文件
+                    // 设置响应头并下载文件 - 使用更可靠的方式发送二进制数据
                     const encodedFilename = encodeURIComponent(fileRecord.originalFilename);
                     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
                     res.setHeader('Content-Type', 'application/octet-stream');
                     res.setHeader('Content-Length', fileBuffer.length);
-                    return res.send(fileBuffer);
+                    res.setHeader('Content-Transfer-Encoding', 'binary');
+                    // 使用 write 和 end 确保二进制数据不被转换
+                    res.write(fileBuffer, 'binary');
+                    return res.end();
                 }
                 catch (minioError) {
                     console.error('从文件记录下载文件失败:', minioError);
@@ -515,10 +518,13 @@ class ModelController {
             }
             // 从MinIO下载文件
             const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);
-            // 设置响应头并返回文件
+            // 设置响应头并返回文件 - 使用更可靠的方式发送二进制数据
             res.setHeader('Content-Type', 'image/png'); // 假设缩略图是PNG格式
             res.setHeader('Content-Length', fileBuffer.length);
-            return res.send(fileBuffer);
+            res.setHeader('Content-Transfer-Encoding', 'binary');
+            // 使用 write 和 end 确保二进制数据不被转换
+            res.write(fileBuffer, 'binary');
+            return res.end();
         }
         catch (error) {
             console.error('获取缩略图失败:', error);

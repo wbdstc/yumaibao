@@ -30,7 +30,13 @@ app.use((0, cors_1.default)({
     allowedHeaders: ['Origin', 'Content-Type', 'Authorization'], // 允许所有头
     credentials: true // 允许凭证
 }));
-app.use(body_parser_1.default.json({ limit: '50mb' }));
+// 配置 body parser - 重要：确保二进制数据不会被错误解析
+app.use(body_parser_1.default.json({ limit: '50mb', verify: (req, _res, _buf, _encoding) => {
+        // 对于二进制请求，不要解析 JSON
+        if (req.is && (req.is('multipart/form-data') || req.is('application/octet-stream'))) {
+            return;
+        }
+    } }));
 app.use(body_parser_1.default.urlencoded({ extended: true, limit: '50mb' }));
 // 健康检查路由
 app.get('/health', (_req, res) => {

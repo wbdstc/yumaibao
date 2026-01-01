@@ -428,10 +428,14 @@ class EmbeddedPartController {
       // 从MinIO下载文件
       const fileBuffer = await downloadFileFromMinIO(fileRecord.bucketName, fileRecord.objectName);
 
-      // 设置响应头并返回文件
+      // 设置响应头并返回文件 - 使用更可靠的方式发送二进制数据
       res.setHeader('Content-Type', 'image/png'); // 假设二维码是PNG格式
       res.setHeader('Content-Length', fileBuffer.length);
-      return res.send(fileBuffer);
+      res.setHeader('Content-Transfer-Encoding', 'binary');
+      
+      // 使用 write 和 end 确保二进制数据不被转换
+      res.write(fileBuffer, 'binary');
+      return res.end();
     } catch (error) {
       console.error('获取二维码失败:', error);
       return res.status(500).json({ message: '获取二维码失败', error: String(error) });

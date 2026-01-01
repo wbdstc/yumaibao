@@ -220,10 +220,22 @@ const downloadFileFromMinIO = async (bucketName, objectName) => {
         // 处理MinIO文件
         const stream = await minio_1.minioClient.getObject(bucketName, objectName);
         const chunks = [];
+        // 确保以二进制模式读取流
         for await (const chunk of stream) {
-            chunks.push(chunk);
+            // 确保chunk是Buffer类型，避免编码转换
+            if (Buffer.isBuffer(chunk)) {
+                chunks.push(chunk);
+            }
+            else {
+                // 如果不是Buffer，转换为Buffer（保持二进制数据）
+                chunks.push(Buffer.from(chunk));
+            }
         }
-        return Buffer.concat(chunks);
+        // 拼接所有chunks，保持二进制数据完整性
+        const resultBuffer = Buffer.concat(chunks);
+        // 记录下载的文件大小，用于调试
+        console.log(`从MinIO下载文件: bucket=${bucketName}, object=${objectName}, size=${resultBuffer.length}字节`);
+        return resultBuffer;
     }
     catch (error) {
         console.error('下载文件失败:', error);
