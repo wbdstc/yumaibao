@@ -261,6 +261,35 @@
         <el-form-item label="位置" prop="location">
           <el-input v-model="embeddedPartForm.location" placeholder="请输入位置" />
         </el-form-item>
+        <el-divider content-position="left">2D坐标信息 (可选)</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="坐标X" prop="coordinateX">
+              <el-input-number
+                v-model="embeddedPartForm.coordinateX"
+                placeholder="输入X坐标"
+                :precision="2"
+                :step="10"
+                controls-position="right"
+                style="width: 100%"
+              />
+              <div class="field-tip">CAD图纸X坐标 (mm)</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="坐标Y" prop="coordinateY">
+              <el-input-number
+                v-model="embeddedPartForm.coordinateY"
+                placeholder="输入Y坐标"
+                :precision="2"
+                :step="10"
+                controls-position="right"
+                style="width: 100%"
+              />
+              <div class="field-tip">CAD图纸Y坐标 (mm)</div>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="状态" prop="status">
           <el-select v-model="embeddedPartForm.status" placeholder="选择状态" style="width: 100%">
             <el-option label="待安装" value="pending" />
@@ -383,6 +412,8 @@ export default {
       modelNumber: '',
       type: '',
       location: '',
+      coordinateX: null,  // 2D坐标X (mm)
+      coordinateY: null,  // 2D坐标Y (mm)
       status: 'pending',
       notes: ''
     })
@@ -648,6 +679,8 @@ export default {
         modelNumber: '',
         type: '',
         location: '',
+        coordinateX: null,
+        coordinateY: null,
         status: 'pending',
         notes: ''
       }
@@ -655,9 +688,24 @@ export default {
     }
 
     // 显示编辑对话框
-    const showEditDialog = (row) => {
+    const showEditDialog = async (row) => {
       isEdit.value = true
       embeddedPartForm.value = { ...row }
+      
+      // 如果有coordinates2D对象，展开为coordinateX/Y
+      if (row.coordinates2D) {
+        embeddedPartForm.value.coordinateX = row.coordinates2D.x
+        embeddedPartForm.value.coordinateY = row.coordinates2D.y
+      } else {
+        embeddedPartForm.value.coordinateX = null
+        embeddedPartForm.value.coordinateY = null
+      }
+      
+      // 🔧 修复：加载对应项目的楼层数据
+      if (row.projectId) {
+        await getFloors(row.projectId)
+      }
+      
       dialogVisible.value = true
     }
 
@@ -670,14 +718,46 @@ export default {
         
         await embeddedPartFormRef.value.validate()
         
+        // 准备提交数据 - 只提取需要的字段
+        const submitData = {
+          projectId: embeddedPartForm.value.projectId,
+          floorId: embeddedPartForm.value.floorId,
+          name: embeddedPartForm.value.name,
+          code: embeddedPartForm.value.code,
+          modelNumber: embeddedPartForm.value.modelNumber,
+          type: embeddedPartForm.value.type,
+          location: embeddedPartForm.value.location,
+          status: embeddedPartForm.value.status,
+          notes: embeddedPartForm.value.notes || ''
+        }
+        
+        // 如果是编辑模式，添加id
+        if (isEdit.value) {
+          submitData.id = embeddedPartForm.value.id
+        }
+        
+        // 如果有坐标输入，构建coordinates2D对象
+        if (embeddedPartForm.value.coordinateX !== null && 
+            embeddedPartForm.value.coordinateY !== null &&
+            !isNaN(embeddedPartForm.value.coordinateX) &&
+            !isNaN(embeddedPartForm.value.coordinateY)) {
+          submitData.coordinates2D = {
+            x: Number(embeddedPartForm.value.coordinateX),
+            y: Number(embeddedPartForm.value.coordinateY)
+          }
+          console.log('✅ 构建2D坐标对象:', submitData.coordinates2D)
+        }
+        
+        console.log('最终提交数据:', submitData)
+        
         if (isEdit.value) {
           console.log('执行更新操作...')
-          const result = await api.embeddedPart.updateEmbeddedPart(embeddedPartForm.value.id, embeddedPartForm.value)
+          const result = await api.embeddedPart.updateEmbeddedPart(submitData.id, submitData)
           console.log('更新结果:', result)
           ElMessage.success('更新成功')
         } else {
           console.log('执行新增操作...')
-          const result = await api.embeddedPart.createEmbeddedPart(embeddedPartForm.value)
+          const result = await api.embeddedPart.createEmbeddedPart(submitData)
           console.log('新增结果:', result)
           ElMessage.success('新增成功')
         }
@@ -1055,6 +1135,14 @@ export default {
 
 :deep(.el-table .success-row) {
   background-color: #f0f9ff;
+}
+
+/* 字段提示文字样式 */
+.field-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1;
 }
 
 /* 分页样式 */

@@ -95,7 +95,12 @@
 
       <!-- CAD查看器（2D视图） -->
       <div class="cad-viewer-wrapper" v-else-if="selectedModel.type === '2d'">
-        <div class="view-title">2D CAD视图</div>
+        <div class="view-title">
+          2D CAD视图: {{ selectedModel?.name || '未命名' }}
+          <span v-if="localCadFile" style="font-size: 12px; color: #909399; margin-left: 10px;">
+            ({{ (localCadFile.size / 1024 / 1024).toFixed(2) }} MB)
+          </span>
+        </div>
         <div v-if="!localCadFile" class="cad-placeholder">
           <el-icon size="64">
             <Document />
@@ -110,7 +115,7 @@
             </el-icon>
             <p>正在初始化查看器...</p>
           </div>
-          <div v-else class="cad-viewer-container">
+          <div v-else class="cad-viewer-container" ref="cadContainerRef">
             <MlCadViewer
           ref="cadViewerRef"
           :key="cadViewerKey"
@@ -129,7 +134,6 @@
       <div class="bim-viewer-wrapper" v-else-if="selectedModel.type === '3d'">
         <div class="view-title">3D BIM视图</div>
         <div class="bim-viewer-container" ref="bimViewerRef">
-          <!-- Three.js 3D模型渲染区域 - 直接渲染，无占位符 -->
         </div>
       </div>
     </div>
@@ -138,13 +142,25 @@
     <div class="embedded-parts-panel">
       <div class="panel-header">
         <h3>预埋件列表 ({{ filteredEmbeddedParts.length }})</h3>
-        <el-input
-          v-model="embeddedPartSearch"
-          placeholder="搜索预埋件"
-          clearable
-          size="small"
-          class="search-input"
-        />
+        <div class="panel-actions">
+          <el-button 
+            type="primary" 
+            size="small" 
+            icon="RefreshRight" 
+            @click="refreshEmbeddedPartsIn3D"
+            v-if="filteredEmbeddedParts.length > 0"
+            :disabled="!scene || !isThreeJsInitialized"
+          >
+            刷新3D显示
+          </el-button>
+          <el-input
+            v-model="embeddedPartSearch"
+            placeholder="搜索预埋件"
+            clearable
+            size="small"
+            class="search-input"
+          />
+        </div>
       </div>
       <!-- 状态筛选 -->
       <div class="status-filter">
@@ -230,6 +246,8 @@ import config from '../config/index.js'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+// 导入坐标转换引擎
+import { CoordinateMapper, createDefaultMapper } from '../utils/coordinateMapper.js'
 
 // --- 【核心修复补丁】开始 ---
 // 解决 TypeError: u.addUpdateRange is not a function 报错
@@ -263,12 +281,17 @@ let camera = null
 let renderer = null
 let controls = null
 let gridHelper = null // 保存3D网格对象引用
+let highlightedMesh = null // 当前高亮的预埋件网格
+let pulseAnimationId = null // 脉冲动画ID
 // 只有需要响应式的状态才使用ref
 const bimModels = ref([]) // 存储加载的BIM模型
 const bimModelObjects = ref({}) // 存储模型对象，用于高亮
 
 // 环境变量 - 在script部分获取，然后在模板中使用
 const baseUrl = import.meta.env.VITE_APP_BASE_URL || ''
+
+// 坐标转换器实例
+let coordinateMapper = null
 
 // 状态管理
 const selectedProjectId = ref('')
@@ -468,6 +491,21 @@ watch(selectedModel, (newModel) => {
     cleanupThreeJs()
   }
 })
+// 1. 定义 ref
+const cadContainerRef = ref(null)
+
+// 2. 监听容器出现，添加"防滚动"补丁
+watch(cadContainerRef, (dom) => {
+  if (dom) {
+    // 核心逻辑：添加 wheel 事件监听，强行阻止浏览器默认行为
+    // 注意：必须加 { passive: false }，否则无法阻止
+    dom.addEventListener('wheel', (e) => {
+      e.preventDefault(); 
+    }, { passive: false });
+    
+    console.log('✅ 已启用鼠标滚轮独占模式 (防止页面滚动)');
+  }
+})
 
 // 方法
 const getProjects = async () => {
@@ -521,6 +559,12 @@ const getFloors = async (projectId) => {
   try {
     const response = await api.floor.getFloors(projectId) // 直接传入projectId，不是对象
     floors.value = response
+    
+    // 初始化坐标转换器
+    if (floors.value && floors.value.length > 0) {
+      coordinateMapper = createDefaultMapper(floors.value)
+      console.log('✅ 坐标转换器已初始化，楼层数:', floors.value.length)
+    }
   } catch (error) {
     console.error('获取楼层列表失败:', error)
     ElMessage.error({
@@ -571,6 +615,26 @@ const getEmbeddedParts = async (projectId, floorId = '') => {
     const response = await api.embeddedPart.getEmbeddedParts(params) // 正确，传入对象
     // 确保embeddedParts始终是数组
     embeddedParts.value = Array.isArray(response) ? response : []
+    
+    console.log('✅ 获取到预埋件数据:', embeddedParts.value.length, '个')
+    
+    // 🔧 修复：如果3D场景已初始化且有预埋件，重新创建预埋件球体
+    if (scene && isThreeJsInitialized.value && embeddedParts.value.length > 0) {
+      console.log('🎯 3D场景已存在，重新创建预埋件球体')
+      
+      // 清除现有的预埋件球体
+      Object.values(bimModelObjects.value).forEach(mesh => {
+        if (mesh.userData.embeddedPartId) {
+          scene.remove(mesh)
+          if (mesh.geometry) mesh.geometry.dispose()
+          if (mesh.material) mesh.material.dispose()
+        }
+      })
+      bimModelObjects.value = {}
+      
+      // 重新创建预埋件球体
+      createEmbeddedPartSpheres()
+    }
   } catch (error) {
     console.error('获取预埋件列表失败:', error)
     ElMessage.error({
@@ -711,6 +775,8 @@ const handleFloorChange = async (floorId) => {
   
   selectedFloorId.value = floorId
   await getEmbeddedParts(selectedProjectId.value, floorId)
+  
+  console.log('🔄 楼层切换，当前预埋件:', embeddedParts.value.length, '个')
 }
 
 const handleModelChange = async (modelId) => {
@@ -825,20 +891,44 @@ const onViewerClick = (event) => {
 }
 
 const highlightEmbeddedPart = (embeddedPart) => {
-  console.log('Highlight embedded part:', embeddedPart)
+  console.log('==================== highlightEmbeddedPart ====================')
+  console.log('🎯 点击的预埋件:', embeddedPart.name, 'ID:', embeddedPart.id)
+  console.log('📍 当前视图模式:', currentView.value)
+  console.log('📊 bimModelObjects总数:', Object.keys(bimModelObjects.value).length)
+  console.log('📊 bimModelObjects的所有ID:', Object.keys(bimModelObjects.value))
+  
+  // 🔧 修复：只在3D或双视图模式下才需要3D对象
+  const need3DHighlight = currentView.value === '3d' || currentView.value === 'both'
+  console.log('🔍 是否需要3D高亮:', need3DHighlight)
+  
+  if (need3DHighlight) {
+    // 检查是否有3D对象
+    const has3DObject = bimModelObjects.value[embeddedPart.id]
+    console.log('🔍 查找ID为', embeddedPart.id, '的3D对象:', has3DObject ? '找到了！' : '未找到')
+    
+    if (!has3DObject && scene && isThreeJsInitialized.value) {
+      console.warn('❌ 未找到预埋件3D对象:', embeddedPart.id)
+      console.log('💡 提示：尝试点击"刷新3D显示"按钮')
+      
+      ElMessage.warning({
+        message: `预埋件 "${embeddedPart.name}" 在3D场景中不可见。请点击"刷新3D显示"按钮`,
+        duration: 4000
+      })
+      return // 如果找不到就直接返回，不要继续
+    }
+  }
+  
   ElMessage.info(`已定位到预埋件: ${embeddedPart.name}`)
   
-  // 在2D CAD视图中高亮
-  if (cadViewerRef.value) {
-    // 调用CAD查看器的高亮方法
-    cadViewerRef.value.highlightEntity(embeddedPart.code)
-    cadViewerRef.value.zoomToEntity(embeddedPart.code)
-  }
+  // 在2D CAD视图中，暂时只显示提示信息
+  // TODO: 后续可以添加CAD查看器的高亮功能（需要查看CAD查看器文档）
   
-  // 如果启用了坐标同步，在3D视图中高亮
-  if (enableCoordinateSync.value && bimViewerRef.value) {
+  // 如果启用了坐标同步且在3D/双视图模式，在3D视图中高亮
+  if (enableCoordinateSync.value && bimViewerRef.value && need3DHighlight && scene) {
+    console.log('✅ 准备调用highlightInBimViewer')
     highlightInBimViewer(embeddedPart)
   }
+  console.log('==============================================================')
 }
 
 
@@ -892,6 +982,39 @@ const refreshViewer = () => {
     // 调用CAD查看器的refresh方法
     cadViewerRef.value.refresh()
   }
+}
+
+// 刷新预埋件3D显示
+const refreshEmbeddedPartsIn3D = () => {
+  if (!scene || !isThreeJsInitialized.value) {
+    ElMessage.warning({
+      message: '请先切换到"3D BIM视图"或"双视图"模式以初始化3D场景',
+      duration: 3000
+    })
+    return
+  }
+  
+  if (embeddedParts.value.length === 0) {
+    ElMessage.info('当前没有预埋件数据')
+    return
+  }
+  
+  console.log('🔄 手动刷新预埋件3D显示，预埋件数量:', embeddedParts.value.length)
+  
+  // 清除现有的预埋件球体
+  Object.values(bimModelObjects.value).forEach(mesh => {
+    if (mesh.userData.embeddedPartId) {
+      scene.remove(mesh)
+      if (mesh.geometry) mesh.geometry.dispose()
+      if (mesh.material) mesh.material.dispose()
+    }
+  })
+  bimModelObjects.value = {}
+  
+  // 重新创建预埋件球体
+  createEmbeddedPartSpheres()
+  
+  ElMessage.success(`已刷新 ${embeddedParts.value.length} 个预埋件的3D显示`)
 }
 
 // 新添加的方法
@@ -957,6 +1080,12 @@ const initThreeJs = () => {
   
   isThreeJsInitialized.value = true
   
+  // 🔧 优化：3D场景初始化后立即同步创建预埋件球体
+  if (embeddedParts.value.length > 0) {
+    console.log('🎯 3D场景初始化完成，立即创建预埋件球体')
+    createEmbeddedPartSpheres()
+  }
+  
   // 开始动画循环
   animate()
 }
@@ -1012,6 +1141,12 @@ const cleanupThreeJs = () => {
     animationFrameId = null
   }
   
+  // 停止脉冲动画
+  if (pulseAnimationId) {
+    cancelAnimationFrame(pulseAnimationId)
+    pulseAnimationId = null
+  }
+  
   if (renderer && renderer.domElement) {
     renderer.dispose()
     if (bimViewerRef.value) {
@@ -1041,6 +1176,7 @@ const cleanupThreeJs = () => {
   renderer = null
   controls = null
   gridHelper = null
+  highlightedMesh = null
   bimModels.value = []
   bimModelObjects.value = {}
   isThreeJsInitialized.value = false
@@ -1151,18 +1287,9 @@ const loadBimModel = async () => {
               currentScene.add(nonReactiveModel)
               bimModels.value.push(nonReactiveModel)
               
-              // 为模型中的每个对象添加用户数据，方便后续操作
-              nonReactiveModel.traverse((object) => {
-                if (object.isMesh) {
-                  // 假设模型中对象的name属性包含预埋件ID
-                  // 实际项目中，需要根据模型的具体结构进行调整
-                  const embeddedPartId = object.name.replace(/[^0-9]/g, '')
-                  if (embeddedPartId) {
-                    object.userData.embeddedPartId = embeddedPartId
-                    bimModelObjects.value[embeddedPartId] = object
-                  }
-                }
-              })
+              // 🔧 修复：不要从模型中提取预埋件ID，避免覆盖我们创建的预埋件球体
+              // 模型只是用于展示建筑结构，预埋件由我们单独创建的球体表示
+              console.log('📦 GLTF模型已添加到场景')
               
               // 调整相机位置以适合模型
               const box = new THREE.Box3().setFromObject(model)
@@ -1177,8 +1304,23 @@ const loadBimModel = async () => {
               currentControls.target.copy(center)
               currentControls.update()
               
-              // 添加预埋件球体（如果模型中没有预埋件对象）
-              if (Object.keys(bimModelObjects.value).length === 0) {
+              // 🔧 关键修复：模型加载完成后，重新创建预埋件球体
+              // 这样可以确保预埋件球体在最上层，不会被模型对象覆盖
+              console.log('📍 GLTF模型加载完成，重新创建预埋件球体以确保可见性')
+              
+              // 先清除bimModelObjects（移除旧的预埋件球体）
+              Object.keys(bimModelObjects.value).forEach(id => {
+                const mesh = bimModelObjects.value[id]
+                if (mesh && mesh.userData && mesh.userData.embeddedPartId) {
+                  currentScene.remove(mesh)
+                  if (mesh.geometry) mesh.geometry.dispose()
+                  if (mesh.material) mesh.material.dispose()
+                }
+              })
+              bimModelObjects.value = {}
+              
+              // 重新创建预埋件球体
+              if (embeddedParts.value.length > 0) {
                 createEmbeddedPartSpheres()
               }
               
@@ -1219,26 +1361,59 @@ const loadBimModel = async () => {
 
 // 创建预埋件球体（当模型中没有预埋件对象时使用）
 const createEmbeddedPartSpheres = () => {
-  if (!scene) return
+  if (!scene) {
+    console.error('❌ 无法创建预埋件球体: scene为null')
+    return
+  }
+  
+  console.log('🎨 开始创建预埋件球体，预埋件数量:', embeddedParts.value.length)
+  
+  let createdCount = 0
+  let withCoordinatesCount = 0
+  let withoutCoordinatesCount = 0
   
   embeddedParts.value.forEach((ep) => {
-    // 尝试从2D模型中获取预埋件的实际位置
-    // 实际项目中，需要根据2D模型和3D模型的坐标映射关系来计算
-    const position = getRandomPosition()
+    let position = null
+    
+    // 尝试使用坐标转换器计算3D位置
+    if (ep.coordinates2D && coordinateMapper) {
+      const coord3D = coordinateMapper.convert2DTo3D(ep.coordinates2D, ep.floorId)
+      if (coord3D) {
+        position = coord3D
+        withCoordinatesCount++
+        console.log(`✅ 预埋件 ${ep.name} (${ep.id}) 使用真实坐标:`, coord3D)
+      }
+    }
+    
+    // 如果没有2D坐标或转换失败，使用随机位置（兼容旧数据）
+    if (!position) {
+      position = getRandomPosition()
+      withoutCoordinatesCount++
+      console.warn(`⚠️ 预埋件 ${ep.name} (${ep.id}) 缺少坐标信息，使用随机位置`, position)
+    }
+    
     const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
     const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
       color: getStatusColor(ep.status)
     })
     const embeddedPartMesh = new THREE.Mesh(embeddedPartGeometry, embeddedPartMaterial)
     embeddedPartMesh.position.set(position.x, position.y, position.z)
-    embeddedPartMesh.userData = { embeddedPartId: ep.id }
+    embeddedPartMesh.userData = { 
+      embeddedPartId: ep.id,
+      embeddedPartName: ep.name,
+      embeddedPartCode: ep.code
+    }
     
     // 使用markRaw确保Three.js对象不会被Vue的响应式系统转换
     const nonReactiveMesh = markRaw(embeddedPartMesh)
     
     scene.add(nonReactiveMesh)
     bimModelObjects.value[ep.id] = nonReactiveMesh
+    createdCount++
   })
+  
+  console.log(`✅ 预埋件球体创建完成！总数: ${createdCount}, 有坐标: ${withCoordinatesCount}, 无坐标: ${withoutCoordinatesCount}`)
+  console.log('📊 bimModelObjects:', Object.keys(bimModelObjects.value))
 }
 
 // 创建演示模型
@@ -1276,14 +1451,32 @@ const createDemoModel = () => {
   
   // 添加一些预埋件（作为示例）
   embeddedParts.value.forEach((ep, index) => {
-    const position = getRandomPosition()
+    let position = null
+    
+    // 尝试使用坐标转换器计算3D位置
+    if (ep.coordinates2D && coordinateMapper) {
+      const coord3D = coordinateMapper.convert2DTo3D(ep.coordinates2D, ep.floorId)
+      if (coord3D) {
+        position = coord3D
+      }
+    }
+    
+    // 如果没有坐标，使用随机位置
+    if (!position) {
+      position = getRandomPosition()
+    }
+    
     const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
     const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
       color: getStatusColor(ep.status)
     })
     const embeddedPartMesh = new THREE.Mesh(embeddedPartGeometry, embeddedPartMaterial)
     embeddedPartMesh.position.set(position.x, position.y, position.z)
-    embeddedPartMesh.userData = { embeddedPartId: ep.id }
+    embeddedPartMesh.userData = { 
+      embeddedPartId: ep.id,
+      embeddedPartName: ep.name,
+      embeddedPartCode: ep.code
+    }
     
     buildingGroup.add(embeddedPartMesh)
     bimModelObjects.value[ep.id] = embeddedPartMesh
@@ -1318,57 +1511,140 @@ const getRandomPosition = () => {
   }
 }
 
-// 根据状态获取颜色
+// 根据状态获取颜色 - 使用更鲜明的颜色
 const getStatusColor = (status) => {
   switch (status) {
     case 'pending':
-      return 0x409eff // 蓝色
+      return 0xff9800 // 橙色 - 待安装
     case 'installed':
-      return 0x67c23a // 绿色
+      return 0x4caf50 // 绿色 - 已安装
     case 'inspected':
-      return 0xe6a23c // 黄色
+      return 0x2196f3 // 蓝色 - 已验收
     case 'completed':
-      return 0x909399 // 灰色
+      return 0x9e9e9e // 灰色 - 已完成
     default:
-      return 0x409eff
+      return 0xff9800
   }
 }
 
-// 在3D BIM视图中高亮预埋件
+// 在3D BIM视图中高亮预埋件 - 带脉冲定位效果
 const highlightInBimViewer = (embeddedPart) => {
   if (!bimViewerRef.value || !scene) return
   
   console.log('在3D视图中高亮:', embeddedPart.name)
   
-  // 恢复所有模型的原始颜色
-  Object.values(bimModelObjects.value).forEach(obj => {
-    if (obj.userData.originalColor) {
-      obj.material.color.set(obj.userData.originalColor)
-      obj.material.emissive.set(0x000000)
-    }
-  })
-  
-  // 高亮选中的预埋件
-  const targetObject = bimModelObjects.value[embeddedPart.id]
-  if (targetObject) {
-    // 保存原始颜色
-    if (!targetObject.userData.originalColor) {
-      targetObject.userData.originalColor = targetObject.material.color.clone()
-    }
-    
-    // 设置高亮效果
-    targetObject.material.emissive.set(0xffff00)
-    targetObject.material.emissiveIntensity = 0.5
-    
-    // 聚焦到选中的对象
-    controls.target.copy(targetObject.position)
-    camera.position.set(
-      targetObject.position.x + 5,
-      targetObject.position.y + 5,
-      targetObject.position.z + 5
-    )
-    controls.update()
+  // 停止之前的脉冲动画
+  if (pulseAnimationId) {
+    cancelAnimationFrame(pulseAnimationId)
+    pulseAnimationId = null
   }
+  
+  // 恢复之前高亮的预埋件
+  if (highlightedMesh) {
+    highlightedMesh.material.emissive.set(0x000000)
+    highlightedMesh.material.emissiveIntensity = 0
+    highlightedMesh.scale.set(1, 1, 1)
+  }
+  
+  // 获取目标对象
+  const targetObject = bimModelObjects.value[embeddedPart.id]
+  if (!targetObject) {
+    console.warn('未找到预埋件对应的3D对象:', embeddedPart.id)
+    return
+  }
+  
+  highlightedMesh = targetObject
+  
+  // 保存原始颜色和大小
+  if (!targetObject.userData.originalColor) {
+    targetObject.userData.originalColor = targetObject.material.color.clone()
+    targetObject.userData.originalScale = targetObject.scale.clone()
+  }
+  
+  // 设置高亮颜色（亮黄色）
+  targetObject.material.emissive.set(0xffff00)
+  targetObject.material.emissiveIntensity = 1
+  
+  // 相机平滑移动到预埋件位置
+  const targetPosition = targetObject.position
+  const distance = 10 // 相机距离
+  
+  // 计算相机新位置（在预埋件上方偏后）
+  const newCameraPosition = {
+    x: targetPosition.x + distance * 0.5,
+    y: targetPosition.y + distance * 0.7,
+    z: targetPosition.z + distance * 0.5
+  }
+  
+  // 平滑移动相机
+  const startCameraPos = camera.position.clone()
+  const startTargetPos = controls.target.clone()
+  const duration = 1000 // 1秒
+  const startTime = Date.now()
+  
+  const smoothMove = () => {
+    const elapsed = Date.now() - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    
+    // 使用缓动函数（ease-out）
+    const easeProgress = 1 - Math.pow(1 - progress, 3)
+    
+    // 插值相机位置
+    camera.position.lerpVectors(
+      startCameraPos,
+      new THREE.Vector3(newCameraPosition.x, newCameraPosition.y, newCameraPosition.z),
+      easeProgress
+    )
+    
+    // 插值控制器目标
+    controls.target.lerpVectors(
+      startTargetPos,
+      targetPosition,
+      easeProgress
+    )
+    
+    controls.update()
+    
+    if (progress < 1) {
+      requestAnimationFrame(smoothMove)
+    }
+  }
+  
+  smoothMove()
+  
+  // 脉冲动画效果
+  let pulseTime = 0
+  const pulseDuration = 3000 // 脉冲持续3秒
+  const pulseStartTime = Date.now()
+  
+  const pulseAnimation = () => {
+    const elapsed = Date.now() - pulseStartTime
+    
+    if (elapsed > pulseDuration) {
+      // 动画结束，保持高亮状态
+      targetObject.scale.set(1, 1, 1)
+      return
+    }
+    
+    pulseTime += 0.05
+    
+    // 缩放脉冲（呼吸效果）
+    const scaleMultiplier = 1 + Math.sin(pulseTime * 3) * 0.2
+    targetObject.scale.set(scaleMultiplier, scaleMultiplier, scaleMultiplier)
+    
+    // 发光强度脉冲
+    const intensity = 0.5 + Math.sin(pulseTime * 3) * 0.5
+    targetObject.material.emissiveIntensity = intensity
+    
+    pulseAnimationId = requestAnimationFrame(pulseAnimation)
+  }
+  
+  pulseAnimation()
+  
+  ElMessage.success({
+    message: `已定位到预埋件: ${embeddedPart.name}`,
+    duration: 2000
+  })
 }
 
 
