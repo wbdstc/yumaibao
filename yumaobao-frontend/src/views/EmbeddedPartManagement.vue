@@ -321,6 +321,7 @@
       v-model="qrcodeDialogVisible"
       title="二维码预览"
       width="30%"
+      @closed="handleQRCodeDialogClosed"
     >
       <div class="qrcode-container" v-if="qrcodeUrl">
         <img :src="qrcodeUrl" alt="预埋件二维码" class="qrcode-img" />
@@ -821,21 +822,45 @@ export default {
     const generateQRCode = async (row) => {
       try {
         selectedEmbeddedPart.value = row
-        const response = await api.embeddedPart.generateQRCode(row.id)
-        qrcodeUrl.value = response.qrcodeUrl
+        // 获取二维码图片的 Blob 数据
+        const blob = await api.embeddedPart.generateQRCode(row.id)
+        
+        // 如果之前已经有生成的 URL，先释放它
+        if (qrcodeUrl.value && qrcodeUrl.value.startsWith('blob:')) {
+          URL.revokeObjectURL(qrcodeUrl.value)
+        }
+        
+        // 创建新的 Object URL
+        qrcodeUrl.value = URL.createObjectURL(blob)
         qrcodeDialogVisible.value = true
       } catch (error) {
         console.error('生成二维码失败:', error)
-        ElMessage.error('生成二维码失败')
+        ElMessage.error('获取二维码失败，请稍后重试')
       }
+    }
+
+    // 处理二维码对话框关闭
+    const handleQRCodeDialogClosed = () => {
+      // 释放 Object URL 以节省内存
+      if (qrcodeUrl.value && qrcodeUrl.value.startsWith('blob:')) {
+        URL.revokeObjectURL(qrcodeUrl.value)
+      }
+      qrcodeUrl.value = ''
+      selectedEmbeddedPart.value = null
     }
 
     // 下载二维码
     const downloadQRCode = () => {
+      if (!qrcodeUrl.value) return
+      
       const link = document.createElement('a')
       link.href = qrcodeUrl.value
       link.download = `${selectedEmbeddedPart.value.name}_${selectedEmbeddedPart.value.code}.png`
+      // 必须将链接添加到文档中某些浏览器才能触发下载
+      link.style.display = 'none'
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
     }
 
     // 处理Excel上传
@@ -1033,7 +1058,8 @@ export default {
       getRowClassName,
       handleSizeChange,
       handleCurrentChange,
-      handleDialogClose
+      handleDialogClose,
+      handleQRCodeDialogClosed
     }
   }
 }

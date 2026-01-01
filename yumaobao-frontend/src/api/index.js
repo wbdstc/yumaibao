@@ -24,16 +24,16 @@ api.interceptors.request.use(
   config => {
     // 直接从 localStorage 读取 token，避免时机问题
     let token = localStorage.getItem('token')
-    
+
     // 添加更详细的调试日志
     console.log('请求拦截器：开始处理请求', config.url)
     console.log('请求拦截器：localStorage中的token', token ? token.substring(0, 20) + '...' : 'null')
-    
+
     // 确保headers对象存在
     if (!config.headers) {
       config.headers = {}
     }
-    
+
     // 如果 token 存在，则添加到请求头
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
@@ -47,7 +47,7 @@ api.interceptors.request.use(
     } else {
       console.log('请求拦截器：未找到 token，请求可能失败')
     }
-    
+
     return config
   },
   error => {
@@ -77,20 +77,20 @@ api.interceptors.response.use(
   error => {
     // 对响应错误做点什么
     console.error('响应拦截器：捕获到错误', error.message)
-    
+
     // 添加详细的错误日志
     if (error.config) {
       console.error('请求URL:', error.config.url)
       console.error('请求方法:', error.config.method)
       console.error('请求参数:', error.config.params || error.config.data)
     }
-    
+
     if (error.response) {
       console.error('响应拦截器：错误响应状态', error.response.status)
       console.error('响应拦截器：错误响应数据', error.response.data)
-      
+
       let errorMessage = '请求失败，请稍后重试'
-      
+
       switch (error.response.status) {
         case 401:
           // 未授权，添加更详细的日志
@@ -143,7 +143,7 @@ api.interceptors.response.use(
           } else {
             errorMessage = `请求错误：${error.response.data?.message || error.response.statusText || '未知错误'}`
           }
-          
+
           ElMessage.error({
             message: errorMessage,
             duration: 6000,
@@ -162,7 +162,7 @@ api.interceptors.response.use(
       } else {
         errorMessage = `网络错误，服务器无响应: ${error.message || '未知错误'}`
       }
-      
+
       ElMessage.error({
         message: errorMessage,
         duration: 8000,
@@ -285,7 +285,7 @@ export default {
       return api.post('/embedded-parts/batch', data)
     },
     generateQRCode(id) {
-      return api.get(`/embedded-parts/${id}/qrcode`)
+      return api.get(`/embedded-parts/${id}/qrcode`, { responseType: 'blob' })
     }
   },
   // BIM模型相关API
@@ -297,7 +297,7 @@ export default {
       return api.get(`/models/${id}`)
     },
     downloadBIMModel(id, useLightweight = true) {
-      return api.get(`/models/${id}/download`, { 
+      return api.get(`/models/${id}/download`, {
         responseType: 'blob',
         params: { useLightweight },
         timeout: TIMEOUT_CONFIG.download
@@ -309,7 +309,7 @@ export default {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
-        onUploadProgress: onUploadProgress || function(progressEvent) {
+        onUploadProgress: onUploadProgress || function (progressEvent) {
           // 默认进度回调
           if (progressEvent.total) {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)

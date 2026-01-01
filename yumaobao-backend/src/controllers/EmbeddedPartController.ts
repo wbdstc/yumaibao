@@ -7,6 +7,7 @@ import xlsx from 'xlsx';
 import path from 'path';
 import { getDB } from '../config/mongodb';
 import { uploadFileToMinIO, deleteFileFromMinIO, downloadFileFromMinIO } from '../utils/fileUploadService';
+import { MINIO_BUCKETS } from '../config/minio';
 
 class EmbeddedPartController {
   // 获取所有预埋件
@@ -77,8 +78,8 @@ class EmbeddedPartController {
       const qrCodeFileName = `${qrCodeData}.png`;
 
       // 上传到MinIO
-      const { url: qrCodeUrl } = await uploadFileToMinIO(
-        'qrcodes',
+      const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
+        MINIO_BUCKETS.QRCODES,
         {
           buffer: qrCodeBuffer,
           originalname: qrCodeFileName,
@@ -93,8 +94,9 @@ class EmbeddedPartController {
         }
       );
 
+      const partId = uuidv4();
       const embeddedPart = await EmbeddedPart.create({
-        id: uuidv4(),
+        id: partId,
         projectId,
         name,
         type,
@@ -106,6 +108,18 @@ class EmbeddedPartController {
         qrCodeUrl,
         status: 'pending'
       });
+
+      // 保存文件记录到modelFiles集合
+      const db = getDB();
+      if (db) {
+        await db.collection('modelFiles').insertOne({
+          modelId: partId,
+          originalFilename: qrCodeFileName,
+          objectName,
+          bucketName: MINIO_BUCKETS.QRCODES,
+          createdAt: new Date()
+        });
+      }
 
       return res.status(201).json({ message: '预埋件创建成功', data: embeddedPart });
     } catch (error) {
@@ -143,8 +157,8 @@ class EmbeddedPartController {
         const qrCodeFileName = `${qrCodeData}.png`;
 
         // 上传到MinIO
-        const { url: qrCodeUrl } = await uploadFileToMinIO(
-          'qrcodes',
+        const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
+          MINIO_BUCKETS.QRCODES,
           {
             buffer: qrCodeBuffer,
             originalname: qrCodeFileName,
@@ -174,6 +188,18 @@ class EmbeddedPartController {
           qrCodeData,
           qrCodeUrl
         });
+
+        // 保存文件记录到modelFiles集合
+        const db = getDB();
+        if (db) {
+          await db.collection('modelFiles').insertOne({
+            modelId: embeddedPart.id,
+            originalFilename: qrCodeFileName,
+            objectName,
+            bucketName: MINIO_BUCKETS.QRCODES,
+            createdAt: new Date()
+          });
+        }
 
         createdParts.push(embeddedPart);
       }
@@ -261,8 +287,8 @@ class EmbeddedPartController {
           const qrCodeFileName = `${qrCodeData}.png`;
 
           // 上传到MinIO
-          const { url: qrCodeUrl } = await uploadFileToMinIO(
-            'qrcodes',
+          const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
+            MINIO_BUCKETS.QRCODES,
             {
               buffer: qrCodeBuffer,
               originalname: qrCodeFileName,
@@ -292,6 +318,18 @@ class EmbeddedPartController {
             qrCodeData,
             qrCodeUrl
           });
+
+          // 保存文件记录到modelFiles集合
+          const db = getDB();
+          if (db) {
+            await db.collection('modelFiles').insertOne({
+              modelId: embeddedPart.id,
+              originalFilename: qrCodeFileName,
+              objectName,
+              bucketName: MINIO_BUCKETS.QRCODES,
+              createdAt: new Date()
+            });
+          }
 
           importedParts.push(embeddedPart);
         } catch (err) {
@@ -450,16 +488,57 @@ class EmbeddedPartController {
         return res.status(500).json({ message: '数据库连接失败' });
       }
 
-      // 查询二维码文件记录
-      const fileRecord = await (db as any).collection('modelFiles').findOne({
+      // 查找二维码文件记录
+      let fileRecord = await (db as any).collection('modelFiles').findOne({
         $or: [
+          { modelId: id },
           { originalFilename: path.basename(embeddedPart.qrCodeUrl) },
           { url: embeddedPart.qrCodeUrl }
         ]
       });
 
+      // 如果记录不存在，由于这是一个自愈逻辑，我们在这里重新生成并保存记录
       if (!fileRecord) {
-        return res.status(404).json({ message: '二维码文件记录不存在' });
+        console.log(`正在为预埋件 ${id} 重新生成缺失的二维码记录...`);
+        try {
+          // 重新生成二维码图片到内存
+          const qrCodeBuffer = await qrcode.toBuffer(embeddedPart.qrCodeData);
+          const qrCodeFileName = `${embeddedPart.qrCodeData}.png`;
+
+          // 重新上传到MinIO
+          const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
+            MINIO_BUCKETS.QRCODES,
+            {
+              buffer: qrCodeBuffer,
+              originalname: qrCodeFileName,
+              mimetype: 'image/png',
+              size: qrCodeBuffer.length,
+              fieldname: 'qrcode',
+              encoding: '7bit',
+              stream: null as any,
+              destination: '',
+              filename: qrCodeFileName,
+              path: ''
+            }
+          );
+
+          // 更新预埋件的URL（以防万一URL发生了变化）
+          await EmbeddedPart.update(id, { qrCodeUrl });
+
+          // 创建缺失的文件记录
+          fileRecord = {
+            modelId: id,
+            originalFilename: qrCodeFileName,
+            objectName,
+            bucketName: MINIO_BUCKETS.QRCODES,
+            createdAt: new Date()
+          };
+          await (db as any).collection('modelFiles').insertOne(fileRecord);
+          console.log(`预埋件 ${id} 的二维码记录已成功补全`);
+        } catch (genError) {
+          console.error('重新生成二维码失败:', genError);
+          return res.status(500).json({ message: '二维码记录不存在且重新生成失败' });
+        }
       }
 
       // 从MinIO下载文件
