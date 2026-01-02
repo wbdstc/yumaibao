@@ -1,7 +1,7 @@
 <template>
   <div class="bim-visualization">
-    <!-- 顶部工具栏 -->
-    <div class="toolbar">
+    <!-- 顶部工具栏 (桌面端) -->
+    <div class="toolbar" v-if="!isMobile">
       <div class="toolbar-left">
         <el-select
           v-model="selectedProjectId"
@@ -54,6 +54,102 @@
       </div>
     </div>
 
+    <!-- 移动端悬浮菜单按钮 -->
+    <div class="mobile-menu-btn" v-if="isMobile" @click="mobileDrawerVisible = true">
+      <el-icon><Menu /></el-icon>
+      <span>菜单</span>
+    </div>
+
+    <!-- 移动端控制面板抽屉 -->
+    <el-drawer
+      v-model="mobileDrawerVisible"
+      title="BIM控制面板"
+      direction="ltr"
+      size="85%"
+      :with-header="true"
+      class="mobile-drawer"
+    >
+      <div class="mobile-controls">
+        <div class="control-group">
+          <h3>项目选择</h3>
+          <el-select v-model="selectedProjectId" placeholder="选择项目" @change="handleProjectChange" class="mobile-select">
+            <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
+          </el-select>
+        </div>
+        
+        <div class="control-group">
+          <h3>楼层选择</h3>
+          <el-select v-model="selectedFloorId" placeholder="选择楼层" @change="handleFloorChange" :disabled="!selectedProjectId" class="mobile-select">
+             <el-option v-for="floor in floors" :key="floor.id" :label="floor.name" :value="floor.id" />
+          </el-select>
+        </div>
+        
+        <div class="control-group">
+          <h3>模型选择</h3>
+          <el-select v-model="selectedModel" placeholder="选择3D模型" value-key="id" @change="handleModelChange" :disabled="!selectedFloorId" class="mobile-select">
+             <el-option v-for="model in filteredModels" :key="model.id" :label="model.name" :value="model" />
+          </el-select>
+        </div>
+        
+        <el-divider />
+        
+        <div class="mobile-embedded-list">
+          <div class="panel-header">
+             <h3>预埋件列表 ({{ filteredEmbeddedParts.length }})</h3>
+             <el-button type="primary" size="small" icon="RefreshRight" @click="refreshEmbeddedPartsIn3D" v-if="filteredEmbeddedParts.length > 0">刷新3D</el-button>
+          </div>
+          
+           <el-input
+            v-model="embeddedPartSearch"
+            placeholder="搜索预埋件"
+            clearable
+            size="small"
+            prefix-icon="Search"
+            class="search-input-full"
+          />
+          
+          <div class="status-filter mobile-filter">
+             <el-checkbox-group v-model="statusFilter" size="small">
+              <el-checkbox label="待安装" value="pending" />
+              <el-checkbox label="已安装" value="installed" />
+              <el-checkbox label="已验收" value="inspected" />
+              <el-checkbox label="已完成" value="completed" />
+            </el-checkbox-group>
+          </div>
+          
+          <div class="embedded-parts-list mobile-list-scroll">
+            <div
+              v-for="embeddedPart in filteredEmbeddedParts"
+              :key="embeddedPart.id"
+              class="embedded-part-item"
+              :class="{
+                'status-pending': embeddedPart.status === 'pending',
+                'status-installed': embeddedPart.status === 'installed',
+                'status-inspected': embeddedPart.status === 'inspected',
+                'status-completed': embeddedPart.status === 'completed'
+              }"
+              @click="highlightEmbeddedPart(embeddedPart); mobileDrawerVisible = false"
+            >
+              <div class="item-content">
+                <div class="item-main">
+                  <div class="item-title">
+                    <span class="item-name">{{ embeddedPart.name }}</span>
+                    <span class="item-code">{{ embeddedPart.code }}</span>
+                  </div>
+                  <div class="item-info">
+                     <span class="info-value">{{ embeddedPart.location }}</span>
+                  </div>
+                </div>
+                 <el-tag :type="getStatusTagType(embeddedPart.status)" size="small">
+                  {{ getStatusLabel(embeddedPart.status) }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
+
     <!-- 主要内容区域 -->
     <div class="page-content">
     <!-- 模型显示区域 -->
@@ -63,6 +159,7 @@
         <el-radio-group v-model="currentView" size="small">
           <el-radio-button label="2d">2D CAD视图</el-radio-button>
           <el-radio-button label="3d">3D BIM视图</el-radio-button>
+          <el-radio-button label="dualAlign">双视图对齐</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -72,6 +169,142 @@
           <Document />
         </el-icon>
         <p>请选择一个项目和模型</p>
+      </div>
+      <!-- 双视图对齐模式 - 分步骤展示 -->
+      <div class="dual-align-container" v-else-if="currentView === 'dualAlign'">
+        <!-- 阶段0: 2D CAD视图 - 全屏选点 -->
+        <div class="stage-view-container" v-if="alignmentStage === 0">
+          <div class="view-title">
+            <span>步骤1: 在2D图纸上标记参考点</span>
+            <div class="title-actions">
+              <el-tag type="info" size="small">已标记 {{ referencePoints2D.length }} 个点</el-tag>
+              <el-button 
+                type="primary" 
+                size="small" 
+                :disabled="referencePoints2D.length < 2"
+                @click="goToStage1"
+              >
+                下一步: 3D选点
+                <el-icon><ArrowRight /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div class="full-view-container">
+            <DualViewCanvas
+              ref="dualCanvasRef"
+              :enabled="alignmentStage === 0"
+              :show-controls="true"
+              :show-axis="showReferenceAxisIn2D"
+              :zoom-factor="currentZoomFactor"
+              :view-offset="currentViewOffset"
+              @point-selected="onPointSelected"
+              @points-cleared="onPointsCleared"
+              @point-removed="onPointRemoved"
+              @coordinate-update="onCoordinateUpdate"
+            >
+              <MlCadViewer
+                v-if="localCadFile && showDualCadViewer"
+                ref="dualCadViewerRef"
+                :key="'dual-' + dualCadViewerKey"
+                :local-file="localCadFile"
+                :use-main-thread-draw="false"
+                base-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/"
+                locale="zh"
+                @loaded="onDualViewerLoaded"
+                @error="onViewerError"
+              />
+              <div v-else class="dual-cad-placeholder">
+                <el-icon size="48"><Document /></el-icon>
+                <p>正在加载2D图纸...</p>
+              </div>
+            </DualViewCanvas>
+          </div>
+        </div>
+        
+        <!-- 阶段1: 3D BIM视图 - 全屏选点 -->
+        <div class="stage-view-container" v-else-if="alignmentStage === 1">
+          <div class="view-title">
+            <span>步骤2: 在3D模型上标记对应点</span>
+            <div class="title-actions">
+              <el-button size="small" @click="goToStage0">
+                <el-icon><ArrowLeft /></el-icon>
+                上一步
+              </el-button>
+              <el-tag type="info" size="small">已标记 {{ referencePoints3D.length }} 个点</el-tag>
+              <el-button 
+                type="success" 
+                size="small" 
+                :disabled="referencePoints3D.length < 2"
+                @click="goToStage2"
+              >
+                完成对齐
+                <el-icon><Check /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div class="full-view-container">
+            <div class="bim-viewer-full" ref="dualBimViewerRef">
+              <!-- 3D点击提示 -->
+              <div class="click-hint" v-if="referencePoints3D.length < referencePoints2D.length">
+                <el-icon><Aim /></el-icon>
+                点击3D模型标记第 {{ referencePoints3D.length + 1 }} 个对应点
+              </div>
+            </div>
+            <!-- 3D视图控制按钮 -->
+            <div class="view-controls-overlay">
+              <el-button-group size="small">
+                <el-button @click="setViewAngle('front')">前视图</el-button>
+                <el-button @click="setViewAngle('top')">俯视图</el-button>
+                <el-button @click="setViewAngle('side')">侧视图</el-button>
+                <el-button @click="resetDualView3D">
+                  <el-icon><RefreshRight /></el-icon>
+                  复位
+                </el-button>
+              </el-button-group>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 阶段2: 确认对齐结果 -->
+        <div class="stage-view-container" v-else-if="alignmentStage === 2">
+          <div class="view-title">
+            <span>步骤3: 确认对齐参数</span>
+            <div class="title-actions">
+              <el-button size="small" @click="goToStage1">
+                <el-icon><ArrowLeft /></el-icon>
+                上一步
+              </el-button>
+            </div>
+          </div>
+          <div class="confirmation-container">
+            <el-card class="result-card">
+              <template #header>
+                <div class="card-header">
+                  <span>对齐结果</span>
+                  <el-tag type="success">已完成</el-tag>
+                </div>
+              </template>
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="2D参考点">{{ referencePoints2D.length }} 个</el-descriptions-item>
+                <el-descriptions-item label="3D参考点">{{ referencePoints3D.length }} 个</el-descriptions-item>
+                <el-descriptions-item label="缩放比例">{{ alignmentParams.scale.toFixed(4) }}</el-descriptions-item>
+                <el-descriptions-item label="旋转角度">{{ alignmentParams.rotation.toFixed(2) }}°</el-descriptions-item>
+                <el-descriptions-item label="X偏移">{{ alignmentParams.offsetX.toFixed(2) }}</el-descriptions-item>
+                <el-descriptions-item label="Y偏移">{{ alignmentParams.offsetY.toFixed(2) }}</el-descriptions-item>
+              </el-descriptions>
+              <div class="action-buttons">
+                <el-button @click="resetAlignment">
+                  <el-icon><RefreshLeft /></el-icon>
+                  重新对齐
+                </el-button>
+                <el-button type="primary" @click="confirmAlignment">
+                  <el-icon><Check /></el-icon>
+                  确认并保存
+                </el-button>
+              </div>
+            </el-card>
+          </div>
+        </div>
       </div>
 
       <!-- CAD查看器（2D视图） -->
@@ -119,8 +352,8 @@
       </div>
     </div>
 
-    <!-- 预埋件列表 -->
-    <div class="embedded-parts-panel">
+    <!-- 预埋件列表 (桌面端) -->
+    <div class="embedded-parts-panel" v-if="!isMobile">
       <div class="panel-header">
         <div class="header-title">
           <h3>预埋件列表</h3>
@@ -220,16 +453,93 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 预埋件详情与操作对话框 -->
+    <el-dialog
+      v-model="detailsDialogVisible"
+      title="预埋件详情"
+      width="500px"
+      append-to-body
+      destroy-on-close
+      draggable
+      :modal="false" 
+      :close-on-click-modal="false"
+      class="draggable-dialog"
+    >
+      <div v-if="targetEmbeddedPart" class="part-details-content">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="名称">{{ targetEmbeddedPart.name }}</el-descriptions-item>
+          <el-descriptions-item label="编号">{{ targetEmbeddedPart.code }}</el-descriptions-item>
+          <el-descriptions-item label="型号">{{ targetEmbeddedPart.modelNumber }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ targetEmbeddedPart.type }}</el-descriptions-item>
+          <el-descriptions-item label="位置">{{ targetEmbeddedPart.location }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="getStatusTagType(targetEmbeddedPart.status)">
+              {{ getStatusLabel(targetEmbeddedPart.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="所属项目">{{ projects.find(p => p.id === targetEmbeddedPart.projectId)?.name || targetEmbeddedPart.projectId }}</el-descriptions-item>
+          <el-descriptions-item label="所属楼层">{{ floors.find(f => f.id === targetEmbeddedPart.floorId)?.name || targetEmbeddedPart.floorId }}</el-descriptions-item>
+          <el-descriptions-item label="备注">{{ targetEmbeddedPart.notes || targetEmbeddedPart.description || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        
+        <div class="dialog-actions-area" style="margin-top: 20px; text-align: center;">
+          <el-button 
+            type="warning" 
+            v-if="targetEmbeddedPart.status === 'pending' && ['projectManager', 'admin', 'projectEngineer', 'installer'].includes(userStore.userRole)"
+            @click="handleConfirmInstallation"
+            :loading="actionLoading"
+          >
+            确认安装
+          </el-button>
+          
+          <el-button 
+            type="primary" 
+            v-if="targetEmbeddedPart.status === 'installed' && ['projectManager', 'admin', 'projectEngineer', 'qualityInspector'].includes(userStore.userRole)"
+            @click="handleConfirmInspection"
+            :loading="actionLoading"
+          >
+            确认验收
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 验收备注对话框 -->
+    <el-dialog
+      v-model="inspectionDialogVisible"
+      title="验收备注"
+      width="400px"
+      append-to-body
+    >
+      <el-form>
+        <el-form-item label="备注说明">
+          <el-input
+            v-model="inspectionNotes"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入验收备注（选填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="inspectionDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitInspection" :loading="actionLoading">提交验收</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, shallowRef, reactive, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight } from '@element-plus/icons-vue'
+import { Document, UploadFilled, Refresh, FullScreen, Grid, Collection, RefreshRight, ArrowRight, ArrowLeft, Check, Aim, RefreshLeft } from '@element-plus/icons-vue'
 import api from '../api/index.js'
 import { MlCadViewer } from '@mlightcad/cad-viewer'
 import { useUserStore } from '../stores/index.js'
+import { useRoute } from 'vue-router'
 import { AcApSettingManager } from '@mlightcad/cad-simple-viewer'
 import config from '../config/index.js'
 // 导入Three.js相关模块
@@ -238,6 +548,22 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 // 导入坐标转换引擎
 import { CoordinateMapper, createDefaultMapper } from '../utils/coordinateMapper.js'
+// 导入双视图整合组件
+import DualViewCanvas from '../components/DualViewCanvas.vue'
+import AlignmentWorkflow from '../components/AlignmentWorkflow.vue'
+import ScreenshotTool from '../components/ScreenshotTool.vue'
+// 导入视图对齐工具
+import {
+  calculateBestViewAngle,
+  resetView as resetViewAlignment,
+  drawReferenceAxis,
+  removeReferenceAxis,
+  animateCameraTo,
+  createReferencePointMarkers,
+  removeReferencePointMarkers,
+  calculateScaleFactor,
+  calculateRotationAngle
+} from '../utils/viewAlignment.js'
 
 // --- 【核心修复补丁】开始 ---
 // 解决 TypeError: u.addUpdateRange is not a function 报错
@@ -260,6 +586,11 @@ if (THREE.BufferAttribute && !THREE.BufferAttribute.prototype.addUpdateRange) {
 
 // 创建userStore实例
 const userStore = useUserStore()
+// 获取路由实例用于处理URL参数（二维码扫描跳转）
+const route = useRoute()
+
+// 目标预埋件ID（从URL参数获取，用于QR码扫描跳转）
+const targetPartId = ref(null)
 
 // 组件引用
 const cadViewerRef = shallowRef(null)
@@ -326,6 +657,52 @@ const selectedEmbeddedPart = ref(null)
 // 可见的预埋件（根据当前楼层过滤）
 const visibleEmbeddedParts = ref([])
 
+// ==================== 双视图对齐模式状态 ====================
+// 双视图组件引用
+const dualCanvasRef = ref(null)
+const dualCadViewerRef = shallowRef(null)
+const dualBimViewerRef = ref(null)
+const alignmentWorkflowRef = ref(null)
+
+// 双视图Three.js状态
+let dualScene = null
+let dualCamera = null
+let dualRenderer = null
+let dualControls = null
+let dualAnimationFrameId = null
+
+// 对齐工作流状态
+const showAlignmentWorkflow = ref(true)
+const alignmentStage = ref(0)  // 0: 标记点, 1: 调整视角, 2: 确认
+const showScreenshotMode = ref(false)
+const showReferenceAxisIn2D = ref(false)
+
+// 双视图CAD查看器独立控制
+const showDualCadViewer = ref(false)
+const dualCadViewerKey = ref(0)
+
+// 参考点数据
+const referencePoints2D = ref([])  // 2D参考点 [{id, x, y, label}, ...]
+const referencePoints3D = ref([])  // 3D参考点 [{id, x, y, z, label}, ...]
+
+// 对齐参数
+const alignmentParams = reactive({
+  scale: 1,
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0
+})
+
+// 视口状态跟踪
+const currentZoomFactor = ref(1)
+const currentViewOffset = ref({ x: 0, y: 0 })
+
+// 对齐锁定状态
+const isAlignmentLocked = ref(false)
+
+// 状态筛选
+const statusFilter = ref(['pending', 'installed', 'inspected', 'completed'])
+
 // 判断用户是否是安装人员或质检人员
 const isRestrictedUser = computed(() => {
   const role = userStore.userRole || ''
@@ -352,6 +729,97 @@ watch(selectedFloorId, () => {
 
 // 对话框
 const layersDialogVisible = ref(false)
+const detailsDialogVisible = ref(false)
+const inspectionDialogVisible = ref(false)
+const targetEmbeddedPart = ref(null) // 专门用于详情弹窗的预埋件对象
+const inspectionNotes = ref('')
+const actionLoading = ref(false)
+
+// 处理确认安装
+const handleConfirmInstallation = async () => {
+  if (!targetEmbeddedPart.value) return
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要确认安装预埋件：${targetEmbeddedPart.value.name} (${targetEmbeddedPart.value.code}) 吗？`,
+      '确认安装',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    actionLoading.value = true
+    // 调用API确认安装 - 使用通用更新状态API替代移动端API
+    await api.embeddedPart.updateScanStatus(targetEmbeddedPart.value.id, 'installed', '')
+    
+    // 更新本地状态
+    targetEmbeddedPart.value.status = 'installed'
+    
+    // 同时也更新列表中的状态
+    const partInList = embeddedParts.value.find(p => p.id === targetEmbeddedPart.value.id)
+    if (partInList) {
+      partInList.status = 'installed'
+    }
+    
+    ElMessage.success('安装确认成功')
+    
+    // 刷新3D中的颜色
+    refreshEmbeddedPartsIn3D()
+    
+  } catch (error) {
+    if (error === 'cancel') return
+    console.error('安装确认失败:', error)
+    ElMessage.error('安装确认失败: ' + (error.response?.data?.message || '未知错误'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// 处理确认验收点击
+const handleConfirmInspection = () => {
+  inspectionNotes.value = ''
+  inspectionDialogVisible.value = true
+}
+
+// 提交验收
+const submitInspection = async () => {
+  if (!targetEmbeddedPart.value) return
+  
+  try {
+    actionLoading.value = true
+    // 调用API确认验收 - 使用通用更新状态API替代移动端API
+    await api.embeddedPart.updateScanStatus(targetEmbeddedPart.value.id, 'inspected', inspectionNotes.value)
+    
+    // 更新本地状态
+    targetEmbeddedPart.value.status = 'inspected'
+    
+    // 同时也更新列表中的状态
+    const partInList = embeddedParts.value.find(p => p.id === targetEmbeddedPart.value.id)
+    if (partInList) {
+      partInList.status = 'inspected'
+    }
+    
+    ElMessage.success('验收确认成功')
+    inspectionDialogVisible.value = false
+    
+    // 刷新3D中的颜色
+    refreshEmbeddedPartsIn3D()
+    
+  } catch (error) {
+    console.error('验收确认失败:', error)
+    ElMessage.error('验收确认失败: ' + (error.response?.data?.message || '未知错误'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// 显示详情弹窗
+const showEmbeddedPartDetails = (part) => {
+  targetEmbeddedPart.value = part
+  detailsDialogVisible.value = true
+}
 
 // 计算属性
 const filteredEmbeddedParts = computed(() => {
@@ -394,6 +862,15 @@ onMounted(() => {
 
   // 获取项目列表
   getProjects()
+  
+  // 处理URL参数中的partId（来自QR码扫描跳转）
+  const partIdFromUrl = route.query.partId
+  if (partIdFromUrl) {
+    targetPartId.value = partIdFromUrl
+    console.log('📱 检测到QR码扫描跳转，目标预埋件ID:', partIdFromUrl)
+    // 获取预埋件详情并显示
+    handleQRCodeNavigation(partIdFromUrl)
+  }
   
   // 添加窗口大小调整监听
   window.addEventListener('resize', handleWindowResize)
@@ -446,8 +923,8 @@ const filteredModels = computed(() => {
   if (!selectedFloorId.value) {
     return models.value
   }
-  // 只显示选中楼层的模型
-  return models.value.filter(model => model.floorId === selectedFloorId.value)
+  // 只显示选中楼层的模型 或 未绑定楼层的通用模型
+  return models.value.filter(model => model.floorId === selectedFloorId.value || !model.floorId)
 })
 
 // 获取状态标签类型
@@ -557,8 +1034,8 @@ const getProjects = async () => {
       console.log('管理员/项目管理员，项目列表:', projects.value)
     }
     
-    // 如果是受限用户，自动选择他们的项目
-    if (isRestrictedUser.value && projects.value.length > 0) {
+    // 如果是受限用户，且没有QR码参数，自动选择他们的项目
+    if (isRestrictedUser.value && projects.value.length > 0 && !route.query.partId) {
       selectedProjectId.value = projects.value[0].id
       console.log('自动选择项目:', selectedProjectId.value)
       await handleProjectChange(selectedProjectId.value)
@@ -576,9 +1053,109 @@ const getProjects = async () => {
   }
 }
 
+// 处理QR码扫描跳转导航
+const handleQRCodeNavigation = async (partId) => {
+  try {
+    console.log('📱 正在加载预埋件详情...', partId)
+    // 通过API获取预埋件详情
+    const response = await api.embeddedPart.getEmbeddedPart(partId)
+    const embeddedPart = response.data || response
+    
+    if (!embeddedPart) {
+      ElMessage.error('未找到预埋件信息')
+      return
+    }
+    
+    console.log('📱 预埋件信息:', embeddedPart)
+    
+    // 1. 设置项目
+    if (embeddedPart.projectId) {
+      // 始终重新加载项目数据，确保模型列表已获取 (解决Race Condition)
+      console.log('📱 切换项目上下文:', embeddedPart.projectId)
+      selectedProjectId.value = embeddedPart.projectId
+      await handleProjectChange(embeddedPart.projectId)
+    }
+    
+    // 2. 设置楼层
+    if (embeddedPart.floorId) {
+      selectedFloorId.value = embeddedPart.floorId
+      // 手动触发楼层变化逻辑，更新预埋件列表
+      await handleFloorChange(embeddedPart.floorId)
+    }
+    
+    // 3. 自动选择并加载3D模型
+    // 在当前楼层的模型中查找3D模型
+    console.log('🔍 正在查找3D模型. 候选模型数量:', filteredModels.value.length)
+    console.log('🔍 候选模型列表:', JSON.parse(JSON.stringify(filteredModels.value)))
+    
+    // 宽松匹配：3d 或 bim 类型
+    const model3D = filteredModels.value.find(m => m.type === '3d' || m.type === 'bim')
+    
+    if (model3D) {
+      console.log('📱 自动选择3D模型:', model3D.name, '类型:', model3D.type)
+      
+      // 切换到3D视图模式
+      currentView.value = '3d'
+      
+      // 选择模型（这将触发模型加载）
+      if (selectedModel.value?.id !== model3D.id) {
+        await handleModelChange(model3D)
+      } else {
+        // 如果已经是当前模型，确保它已加载
+        if (!isBimModelLoaded.value) {
+          await loadBimModel()
+        }
+      }
+      
+      // 4. 等待模型加载完成并高亮预埋件
+      const waitForModelAndHighlight = () => {
+        if (isBimModelLoaded.value && scene && isThreeJsInitialized.value) {
+          // 延迟一点点确保渲染已就绪
+          setTimeout(() => {
+            // 确保高亮对象存在
+            if (bimModelObjects.value[embeddedPart.id]) {
+              highlightEmbeddedPart(embeddedPart)
+            } else {
+              // 尝试刷新与重建
+              refreshEmbeddedPartsIn3D()
+              setTimeout(() => {
+                if (bimModelObjects.value[embeddedPart.id]) {
+                  highlightEmbeddedPart(embeddedPart)
+                } else {
+                  ElMessage.warning('无法在3D视图中定位该预埋件')
+                }
+              }, 500)
+            }
+            // 💡 高亮完成后，显示带有操作按钮的详情弹窗
+            showEmbeddedPartDetails(embeddedPart)
+          }, 500)
+        } else {
+          // 继续等待
+          setTimeout(waitForModelAndHighlight, 500)
+        }
+      }
+      
+      // 开始等待
+      ElMessage.success('正在加载模型并定位预埋件...')
+      waitForModelAndHighlight()
+      
+    } else {
+      console.warn('❌ 未找到匹配的3D模型. Filtered Models:', filteredModels.value)
+      ElMessage.warning('该楼层未找到3D模型，无法展示3D定位')
+      // 即使没有3D模型，也显示详情弹窗
+      showEmbeddedPartDetails(embeddedPart)
+    }
+
+  } catch (error) {
+    console.error('获取预埋件详情失败:', error)
+    ElMessage.error('获取预埋件详情失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+  }
+}
+
 const getFloors = async (projectId) => {
   try {
-    const response = await api.floor.getFloors(projectId) // 直接传入projectId，不是对象
+    // 传入 suppress403: true 以抑制全局的403错误提示
+    const response = await api.floor.getFloors(projectId, { suppress403: true }) // 直接传入projectId，不是对象
     floors.value = response
     
     // 初始化坐标转换器
@@ -587,6 +1164,13 @@ const getFloors = async (projectId) => {
       console.log('✅ 坐标转换器已初始化，楼层数:', floors.value.length)
     }
   } catch (error) {
+    // 如果是403错误，静默处理（可能是安装/质检人员没有查看楼层列表的权限）
+    if (error.response && error.response.status === 403) {
+      console.warn('用户没有权限获取楼层列表 (403)，已静默处理')
+      floors.value = []
+      return
+    }
+
     console.error('获取楼层列表失败:', error)
     ElMessage.error({
       message: '获取楼层列表失败，请稍后重试',
@@ -604,8 +1188,17 @@ const getModels = async (projectId) => {
       return
     }
     
-    const response = await api.bimModel.getBIMModels({ projectId }) // 正确，传入对象
-    models.value = Array.isArray(response) ? response : []
+    // 传入 suppress403: true 以抑制全局的403错误提示
+    const response = await api.bimModel.getBIMModels({ projectId }, { suppress403: true }) 
+    const modelsData = Array.isArray(response) ? response : (response.data || [])
+    models.value = Array.isArray(modelsData) ? modelsData : []
+
+    console.log('✅ 获取模型列表成功. 数量:', models.value.length)
+    if (models.value.length > 0) {
+      console.log('📦 模型列表内容:', JSON.parse(JSON.stringify(models.value)))
+    } else {
+      console.warn('⚠️ 后端返回了空模型列表')
+    }
     
     // 如果当前选中的模型不在列表中，清空选中状态
     if (selectedModel.value && !models.value.find(m => m.id === selectedModel.value.id)) {
@@ -615,6 +1208,13 @@ const getModels = async (projectId) => {
       selectedModelId.value = ''
     }
   } catch (error) {
+    // 如果是403错误，静默处理（可能是安装/质检人员没有查看模型列表的权限）
+    if (error.response && error.response.status === 403) {
+      console.warn('用户没有权限获取模型列表 (403)，已静默处理')
+      models.value = []
+      return
+    }
+
     console.error('获取模型列表失败:', error)
     ElMessage.error({
       message: '获取模型列表失败，请稍后重试',
@@ -1136,7 +1736,7 @@ const animate = () => {
     // 显示错误信息
     ElMessage.error('3D模型渲染失败，已切换到演示模式')
     // 创建演示模型作为备选
-    createDemoModel()
+    // createDemoModel()
   }
 }
 
@@ -1302,6 +1902,9 @@ const loadBimModel = async () => {
               
               const model = gltf.scene
               
+              // 缩放模型：根据用户反馈调整 (0.01)
+              model.scale.set(0.1, 0.1, 0.1)
+
               // 使用markRaw确保Three.js对象不会被Vue的响应式系统转换
               const nonReactiveModel = markRaw(model)
               
@@ -1360,7 +1963,7 @@ const loadBimModel = async () => {
               isBimModelLoaded.value = false
               
               // 如果加载失败，创建演示模型作为备选
-              createDemoModel()
+              // createDemoModel()
               isBimModelLoaded.value = true
             }
           )
@@ -1369,13 +1972,13 @@ const loadBimModel = async () => {
           ElMessage.error('加载3D BIM模型失败')
           
           // 如果获取模型文件失败，创建演示模型作为备选
-          createDemoModel()
+          // createDemoModel()
           isBimModelLoaded.value = true
         }
       } else {
         // 如果没有fileUrl，创建演示模型
-        console.log('模型没有fileUrl，创建演示模型')
-        createDemoModel()
+        console.log('模型没有fileUrl，不显示模型')
+        // createDemoModel()
         isBimModelLoaded.value = true
       }
 }
@@ -1413,7 +2016,7 @@ const createEmbeddedPartSpheres = () => {
       console.warn(`⚠️ 预埋件 ${ep.name} (${ep.id}) 缺少坐标信息，使用随机位置`, position)
     }
     
-    const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
+    const embeddedPartGeometry = new THREE.SphereGeometry(0.02, 32, 32)
     const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
       color: getStatusColor(ep.status)
     })
@@ -1437,100 +2040,7 @@ const createEmbeddedPartSpheres = () => {
   console.log('📊 bimModelObjects:', Object.keys(bimModelObjects.value))
 }
 
-// 创建演示模型
-const createDemoModel = () => {
-  if (!scene) return
-  
-  // 清空现有模型
-  bimModels.value.forEach(model => {
-    scene.remove(model)
-  })
-  bimModels.value = []
-  bimModelObjects.value = {}
-  
-  // 创建一个建筑模型（简化版）
-  const buildingGroup = new THREE.Group()
-  
-  // 建筑主体
-  const buildingGeometry = new THREE.BoxGeometry(20, 15, 20)
-  const buildingMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x87CEEB,
-    transparent: true,
-    opacity: 0.7
-  })
-  const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial)
-  buildingGroup.add(buildingMesh)
-  
-  // 楼层分割线
-  for (let i = 1; i < 5; i++) {
-    const floorGeometry = new THREE.BoxGeometry(21, 0.1, 21)
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF })
-    const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial)
-    floorMesh.position.y = (i * 3) - 7.5
-    buildingGroup.add(floorMesh)
-  }
-  
-  // 添加一些预埋件（作为示例）
-  embeddedParts.value.forEach((ep, index) => {
-    let position = null
-    
-    // 尝试使用坐标转换器计算3D位置
-    if (ep.coordinates2D && coordinateMapper) {
-      const coord3D = coordinateMapper.convert2DTo3D(ep.coordinates2D, ep.floorId)
-      if (coord3D) {
-        position = coord3D
-      }
-    }
-    
-    // 如果没有坐标，使用随机位置
-    if (!position) {
-      position = getRandomPosition()
-    }
-    
-    const embeddedPartGeometry = new THREE.SphereGeometry(0.5, 32, 32)
-    const embeddedPartMaterial = new THREE.MeshStandardMaterial({ 
-      color: getStatusColor(ep.status)
-    })
-    const embeddedPartMesh = new THREE.Mesh(embeddedPartGeometry, embeddedPartMaterial)
-    embeddedPartMesh.position.set(position.x, position.y, position.z)
-    embeddedPartMesh.userData = { 
-      embeddedPartId: ep.id,
-      embeddedPartName: ep.name,
-      embeddedPartCode: ep.code
-    }
-    
-    buildingGroup.add(embeddedPartMesh)
-    bimModelObjects.value[ep.id] = embeddedPartMesh
-  })
-  
-  // 使用markRaw确保Three.js对象不会被Vue的响应式系统转换
-  const nonReactiveBuildingGroup = markRaw(buildingGroup)
-  
-  scene.add(nonReactiveBuildingGroup)
-  bimModels.value.push(nonReactiveBuildingGroup)
-  
-  // 调整相机位置以适合模型
-  const box = new THREE.Box3().setFromObject(buildingGroup)
-  const center = box.getCenter(new THREE.Vector3())
-  const size = box.getSize(new THREE.Vector3())
-  const maxDim = Math.max(size.x, size.y, size.z)
-  const fov = camera.fov * (Math.PI / 180)
-  let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2))
-  cameraZ *= 1.5
-  
-  camera.position.set(center.x, center.y + size.y * 0.5, center.z + cameraZ)
-  controls.target.copy(center)
-  controls.update()
-}
-
-// 获取随机位置
-const getRandomPosition = () => {
-  return {
-    x: (Math.random() - 0.5) * 18,
-    y: (Math.random() - 0.5) * 13,
-    z: (Math.random() - 0.5) * 18
-  }
-}
+// createDemoModel removed
 
 // 根据状态获取颜色 - 使用更鲜明的颜色
 const getStatusColor = (status) => {
@@ -1668,6 +2178,679 @@ const highlightInBimViewer = (embeddedPart) => {
   })
 }
 
+// ==================== 双视图对齐模式方法 ====================
+
+// 监听视图切换到双视图对齐模式
+watch(currentView, async (newView, oldView) => {
+  if (newView === 'dualAlign') {
+    // 切换前先隐藏所有CAD查看器
+    showCadViewer.value = false
+    showDualCadViewer.value = false
+    
+    // 等待DOM完全更新，确保旧的CAD实例被销毁
+    await nextTick()
+    
+    // 延迟初始化，确保旧的CAD实例已完全销毁
+    setTimeout(async () => {
+      // 先初始化3D场景
+      initDualView3D()
+      
+      // 确保2D CAD文件已加载（异步等待）
+      await loadDualView2DCad()
+      
+      // 使用独立的key和显示标志
+      dualCadViewerKey.value++
+      await nextTick()
+      
+      // 延迟显示双视图CAD查看器
+      setTimeout(() => {
+        showDualCadViewer.value = true
+        console.log('✅ 双视图CAD查看器显示，key:', dualCadViewerKey.value)
+      }, 300)
+    }, 300)
+  } else if (oldView === 'dualAlign' && newView !== 'dualAlign') {
+    // 离开双视图模式时清理
+    showDualCadViewer.value = false
+    cleanupDualView3D()
+    
+    // 等待DOM更新
+    await nextTick()
+    
+    // 延迟恢复普通CAD查看器
+    setTimeout(() => {
+      cadViewerKey.value++
+      showCadViewer.value = true
+    }, 300)
+  }
+})
+
+// 加载双视图的2D CAD文件
+const loadDualView2DCad = async () => {
+  // 如果已经有localCadFile，不需要重新加载
+  if (localCadFile.value) {
+    console.log('✅ 2D CAD文件已加载')
+    return
+  }
+  
+  // 查找当前项目中的2D模型
+  const model2D = models.value.find(m => m.type === '2d')
+  
+  if (!model2D || !model2D.fileUrl) {
+    console.log('没有找到2D CAD模型')
+    return
+  }
+  
+  try {
+    console.log('📄 开始加载双视图2D CAD文件:', model2D.name)
+    
+    const fileUrl = model2D.fileUrl.startsWith('http') 
+      ? model2D.fileUrl 
+      : `${config.apiBaseUrl}${model2D.fileUrl}`
+    
+    const response = await fetch(fileUrl)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    const fileName = model2D.name || 'model.dwg'
+    const file = new File([blob], fileName, { type: blob.type })
+    
+    localCadFile.value = file
+    console.log('✅ 双视图2D CAD文件加载完成:', fileName)
+  } catch (error) {
+    console.error('加载2D CAD文件失败:', error)
+  }
+}
+
+// 初始化双视图3D场景
+const initDualView3D = () => {
+  if (!dualBimViewerRef.value) return
+  
+  const container = dualBimViewerRef.value
+  const width = container.clientWidth
+  const height = container.clientHeight
+  
+  if (width === 0 || height === 0) {
+    // 容器还没准备好，延迟初始化
+    setTimeout(initDualView3D, 100)
+    return
+  }
+  
+  // 创建场景
+  dualScene = new THREE.Scene()
+  dualScene.background = new THREE.Color(0xf0f2f5)
+  
+  // 创建相机
+  dualCamera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
+  dualCamera.position.set(15, 15, 15)
+  
+  // 创建渲染器
+  dualRenderer = new THREE.WebGLRenderer({ antialias: true })
+  dualRenderer.setSize(width, height)
+  dualRenderer.setPixelRatio(window.devicePixelRatio)
+  container.innerHTML = ''
+  container.appendChild(dualRenderer.domElement)
+  
+  // 创建控制器
+  dualControls = new OrbitControls(dualCamera, dualRenderer.domElement)
+  dualControls.enableDamping = true
+  dualControls.dampingFactor = 0.05
+  
+  // 添加光源
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+  dualScene.add(ambientLight)
+  
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+  directionalLight.position.set(10, 20, 10)
+  dualScene.add(directionalLight)
+  
+  // 添加网格
+  const gridHelper = new THREE.GridHelper(50, 50)
+  dualScene.add(gridHelper)
+  
+  // 添加坐标轴
+  const axesHelper = new THREE.AxesHelper(5)
+  dualScene.add(axesHelper)
+  
+  // 添加简单建筑模型作为参考
+  // createDualViewDemoBuilding()
+  
+  // 启动动画循环
+  dualAnimate()
+  
+  // 加载实际的BIM模型（如果有的话）
+  loadDualViewActualModel()
+  
+  console.log('✅ 双视图3D场景初始化完成')
+}
+
+// 加载双视图的实际BIM模型
+const loadDualViewActualModel = async () => {
+  if (!dualScene) return
+  
+  // 查找当前项目中的3D模型
+  const model3D = models.value.find(m => m.type === '3d')
+  
+  if (!model3D || !model3D.fileUrl) {
+    console.log('没有找到3D模型，不显示演示模型')
+    // createDualViewDemoBuilding()
+    return
+  }
+  
+  try {
+    // 构建模型URL
+    const modelUrl = model3D.fileUrl.startsWith('http') 
+      ? model3D.fileUrl 
+      : `${config.apiBaseUrl}${model3D.fileUrl}`
+    
+    console.log('📦 开始加载双视图BIM模型:', modelUrl)
+    
+    const loader = new GLTFLoader()
+    loader.load(
+      modelUrl,
+      (gltf) => {
+        if (!dualScene) return
+        
+        const model = gltf.scene
+        
+        // 缩放模型：根据用户反馈调整 (0.01)
+        model.scale.set(0.1, 0.1, 0.1)
+        
+        const nonReactiveModel = markRaw(model)
+        dualScene.add(nonReactiveModel)
+        
+        // 调整相机位置
+        const box = new THREE.Box3().setFromObject(model)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        const maxDim = Math.max(size.x, size.y, size.z)
+        const fov = dualCamera.fov * (Math.PI / 180)
+        let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2))
+        cameraZ *= 1.5
+        
+        dualCamera.position.set(center.x, center.y + size.y * 0.5, center.z + cameraZ)
+        dualControls.target.copy(center)
+        dualControls.update()
+        
+        // 添加预埋件标记球
+        if (embeddedParts.value.length > 0) {
+          createDualViewEmbeddedPartSpheres()
+        }
+        
+        console.log('✅ 双视图BIM模型加载完成')
+      },
+      undefined,
+      (error) => {
+        console.error('加载双视图BIM模型失败:', error)
+        // createDualViewDemoBuilding()
+      }
+    )
+  } catch (error) {
+    console.error('加载双视图BIM模型失败:', error)
+    // createDualViewDemoBuilding()
+  }
+}
+
+// 在双视图场景中创建预埋件球体标记
+const createDualViewEmbeddedPartSpheres = () => {
+  if (!dualScene) return
+  
+  embeddedParts.value.forEach((ep) => {
+    let position = null
+    
+    if (ep.coordinates2D && coordinateMapper) {
+      const coord3D = coordinateMapper.convert2DTo3D(ep.coordinates2D, ep.floorId)
+      if (coord3D) position = coord3D
+    }
+    
+    if (!position) {
+      position = getRandomPosition()
+    }
+    
+    const sphereGeometry = new THREE.SphereGeometry(0.02, 32, 32)
+    const sphereMaterial = new THREE.MeshStandardMaterial({ 
+      color: getStatusColor(ep.status)
+    })
+    const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial)
+    sphereMesh.position.set(position.x, position.y, position.z)
+    sphereMesh.userData = { 
+      embeddedPartId: ep.id,
+      embeddedPartName: ep.name
+    }
+    
+    dualScene.add(sphereMesh)
+  })
+}
+
+// 创建双视图演示建筑 (作为备选)
+// createDualViewDemoBuilding removed
+
+// 双视图动画循环
+const dualAnimate = () => {
+  dualAnimationFrameId = requestAnimationFrame(dualAnimate)
+  
+  if (dualControls) {
+    dualControls.update()
+  }
+  
+  if (dualRenderer && dualScene && dualCamera) {
+    dualRenderer.render(dualScene, dualCamera)
+  }
+}
+
+// 清理双视图3D资源
+const cleanupDualView3D = () => {
+  if (dualAnimationFrameId) {
+    cancelAnimationFrame(dualAnimationFrameId)
+    dualAnimationFrameId = null
+  }
+  
+  if (dualRenderer && dualRenderer.domElement) {
+    dualRenderer.dispose()
+    if (dualBimViewerRef.value) {
+      dualBimViewerRef.value.innerHTML = ''
+    }
+  }
+  
+  if (dualScene) {
+    dualScene.traverse((object) => {
+      if (object.geometry) object.geometry.dispose()
+      if (object.material) {
+        if (Array.isArray(object.material)) {
+          object.material.forEach((m) => m.dispose())
+        } else {
+          object.material.dispose()
+        }
+      }
+    })
+  }
+  
+  dualScene = null
+  dualCamera = null
+  dualRenderer = null
+  dualControls = null
+}
+
+// 双视图CAD加载完成
+const onDualViewerLoaded = () => {
+  console.log('✅ 双视图2D CAD加载完成')
+  ElMessage.success('双视图模式已启动')
+}
+
+// 当在2D视图中选择点时
+const onPointSelected = (data) => {
+  console.log('📍 选中点:', data)
+  
+  // 保存2D点
+  referencePoints2D.value.push({
+    id: data.point.id,
+    x: data.worldCoords.x,
+    y: data.worldCoords.y,
+    label: data.point.label
+  })
+  
+  // 转换为3D坐标并同步显示
+  if (coordinateMapper) {
+    const coord3D = coordinateMapper.convert2DTo3D(
+      { x: data.worldCoords.x, y: data.worldCoords.y },
+      selectedFloorId.value
+    )
+    
+    if (coord3D) {
+      referencePoints3D.value.push({
+        id: data.point.id,
+        x: coord3D.x,
+        y: coord3D.y,
+        z: coord3D.z,
+        label: data.point.label
+      })
+      
+      // 在3D视图中显示标记
+      if (dualScene) {
+        createReferencePointMarkers(dualScene, referencePoints3D.value)
+      }
+    }
+  }
+  
+  // 更新对齐参数
+  updateAlignmentParams()
+}
+
+// 当坐标更新时（鼠标移动）
+const onCoordinateUpdate = (data) => {
+  // 可以用于实时显示坐标
+  // console.log('坐标更新:', data)
+}
+
+// 清除所有点
+const onPointsCleared = () => {
+  referencePoints2D.value = []
+  referencePoints3D.value = []
+  
+  if (dualScene) {
+    removeReferencePointMarkers(dualScene)
+  }
+  
+  // 重置对齐参数
+  alignmentParams.scale = 1
+  alignmentParams.rotation = 0
+  alignmentParams.offsetX = 0
+  alignmentParams.offsetY = 0
+}
+
+// 移除单个点
+const onPointRemoved = (data) => {
+  const index = referencePoints2D.value.findIndex(p => p.id === data.point?.id)
+  if (index > -1) {
+    referencePoints2D.value.splice(index, 1)
+    referencePoints3D.value.splice(index, 1)
+    
+    // 更新3D标记
+    if (dualScene) {
+      removeReferencePointMarkers(dualScene)
+      if (referencePoints3D.value.length > 0) {
+        createReferencePointMarkers(dualScene, referencePoints3D.value)
+      }
+    }
+  }
+}
+
+// 工作流阶段变化
+const onAlignmentStageChange = (data) => {
+  alignmentStage.value = data.stage
+  console.log('📊 对齐阶段:', data.stage, data.name)
+  
+  if (data.stage === 1) {
+    // 进入3D选点阶段，初始化3D场景
+    initDualView3D()
+    if (dualScene) {
+      drawReferenceAxis(dualScene, alignmentParams.rotation)
+    }
+  } else if (data.stage === 0) {
+    // 返回2D标记阶段，清理3D
+    if (dualScene) {
+      removeReferenceAxis(dualScene)
+    }
+  }
+}
+
+// ==================== 阶段导航方法 ====================
+
+// 从2D选点进入3D选点
+const goToStage1 = async () => {
+  if (referencePoints2D.value.length < 2) {
+    ElMessage.warning('请至少标记2个参考点')
+    return
+  }
+  
+  alignmentStage.value = 1
+  console.log('📊 进入3D选点阶段')
+  
+  // 等待DOM更新后初始化3D场景
+  await nextTick()
+  setTimeout(() => {
+    initDualView3D()
+  }, 100)
+}
+
+// 返回2D选点
+const goToStage0 = () => {
+  alignmentStage.value = 0
+  console.log('📊 返回2D选点阶段')
+  
+  // 清理3D场景
+  cleanupDualView3D()
+}
+
+// 进入确认阶段
+const goToStage2 = () => {
+  if (referencePoints3D.value.length < 2) {
+    ElMessage.warning('请至少标记2个3D参考点')
+    return
+  }
+  
+  alignmentStage.value = 2
+  console.log('📊 进入确认阶段')
+  
+  // 计算对齐参数
+  updateAlignmentParams()
+}
+
+// 设置3D视角
+const setViewAngle = (angle) => {
+  if (!dualCamera || !dualControls) return
+  
+  const distance = 30
+  const positions = {
+    front: { x: 0, y: 5, z: distance },
+    top: { x: 0, y: distance, z: 0.1 },
+    side: { x: distance, y: 5, z: 0 },
+    iso: { x: distance * 0.7, y: distance * 0.7, z: distance * 0.7 }
+  }
+  
+  const pos = positions[angle] || positions.iso
+  dualCamera.position.set(pos.x, pos.y, pos.z)
+  dualControls.target.set(0, 5, 0)
+  dualControls.update()
+  
+  ElMessage.info(`已切换到${angle === 'front' ? '前' : angle === 'top' ? '俯' : angle === 'side' ? '侧' : '等轴测'}视图`)
+}
+
+// 重置对齐流程
+const resetAlignment = () => {
+  ElMessageBox.confirm('确定要重新开始对齐流程吗？所有标记点将被清除。', '确认', {
+    type: 'warning'
+  }).then(() => {
+    alignmentStage.value = 0
+    referencePoints2D.value = []
+    referencePoints3D.value = []
+    alignmentParams.scale = 1
+    alignmentParams.rotation = 0
+    alignmentParams.offsetX = 0
+    alignmentParams.offsetY = 0
+    
+    cleanupDualView3D()
+    ElMessage.success('已重置对齐流程')
+  }).catch(() => {})
+}
+
+// 确认对齐
+const confirmAlignment = async () => {
+  try {
+    await ElMessageBox.confirm('确认应用当前对齐参数吗？', '确认对齐', {
+      type: 'success'
+    })
+    
+    // 保存对齐参数到coordinateMapper
+    if (coordinateMapper) {
+      coordinateMapper.updateConfig({
+        scale: alignmentParams.scale,
+        rotation: alignmentParams.rotation,
+        offsetX: alignmentParams.offsetX,
+        offsetY: alignmentParams.offsetY
+      })
+    }
+    
+    ElMessage.success('对齐参数已保存！')
+    
+    // 可以在这里保存到后端
+    // await api.saveAlignmentParams(...)
+    
+    // 返回正常视图模式
+    currentView.value = '3d'
+  } catch {
+    // 用户取消
+  }
+}
+
+// 工作流点移除
+const onWorkflowPointRemoved = (index) => {
+  if (dualCanvasRef.value) {
+    dualCanvasRef.value.undoLastPoint()
+  }
+}
+
+// 工作流清除所有点
+const onWorkflowPointsCleared = () => {
+  if (dualCanvasRef.value) {
+    dualCanvasRef.value.clearAllPoints()
+  }
+}
+
+// 视角预设变化
+const onViewAngleChange = (angle) => {
+  if (!dualCamera || !dualControls) return
+  
+  const distance = 25
+  let position = { x: 0, y: 0, z: 0 }
+  let target = { x: 0, y: 6, z: 0 }
+  
+  switch (angle) {
+    case 'front':
+      position = { x: 0, y: 6, z: distance }
+      break
+    case 'top':
+      position = { x: 0, y: distance, z: 0.1 }
+      break
+    case 'side':
+      position = { x: distance, y: 6, z: 0 }
+      break
+    case 'iso':
+    default:
+      position = { x: distance * 0.7, y: distance * 0.5, z: distance * 0.7 }
+      break
+  }
+  
+  animateCameraTo(dualCamera, dualControls, position, target)
+}
+
+// 计算最佳视角
+const onBestAngleRequested = () => {
+  if (!dualCamera || !dualControls || referencePoints3D.value.length < 2) {
+    ElMessage.warning('至少需要2个参考点才能计算最佳视角')
+    return
+  }
+  
+  const result = calculateBestViewAngle(referencePoints3D.value, dualCamera)
+  if (result) {
+    animateCameraTo(dualCamera, dualControls, 
+      { x: result.position.x, y: result.position.y, z: result.position.z },
+      { x: result.target.x, y: result.target.y, z: result.target.z }
+    )
+    ElMessage.success('已调整到最佳视角')
+  }
+}
+
+// 重置视图
+const onResetView = () => {
+  if (!dualCamera || !dualControls) return
+  
+  resetViewAlignment(dualCamera, dualControls, 
+    { x: 15, y: 15, z: 15 }, 
+    { x: 0, y: 6, z: 0 }
+  )
+}
+
+// 重置双视图3D
+const resetDualView3D = () => {
+  onResetView()
+}
+
+// 参考轴切换
+const onReferenceAxisToggle = (show) => {
+  if (!dualScene) return
+  
+  if (show) {
+    drawReferenceAxis(dualScene, alignmentParams.rotation)
+  } else {
+    removeReferenceAxis(dualScene)
+  }
+}
+
+// 对齐确认
+const onAlignmentConfirm = (data) => {
+  console.log('✅ 对齐确认:', data)
+  
+  isAlignmentLocked.value = data.locked
+  
+  // 保存对齐参数
+  if (coordinateMapper) {
+    coordinateMapper.updateConfig({
+      alignment: {
+        ...coordinateMapper.config.alignment,
+        rotation: data.params.rotation,
+        scale: data.params.scale
+      }
+    })
+  }
+  
+  ElMessage.success({
+    message: '对齐参数已保存' + (data.locked ? '并锁定' : ''),
+    duration: 3000
+  })
+}
+
+// 对齐解锁
+const onAlignmentUnlock = () => {
+  isAlignmentLocked.value = false
+  alignmentStage.value = 0
+}
+
+// 切换截图模式
+const toggleScreenshotMode = () => {
+  showScreenshotMode.value = !showScreenshotMode.value
+}
+
+// 更新对齐参数
+const updateAlignmentParams = () => {
+  if (referencePoints2D.value.length >= 2 && referencePoints3D.value.length >= 2) {
+    // 计算缩放比例
+    alignmentParams.scale = calculateScaleFactor(
+      referencePoints2D.value, 
+      referencePoints3D.value
+    )
+    
+    // 计算旋转角度
+    alignmentParams.rotation = calculateRotationAngle(
+      referencePoints2D.value, 
+      referencePoints3D.value
+    )
+    
+    // 计算偏移
+    if (referencePoints2D.value.length > 0 && referencePoints3D.value.length > 0) {
+      const p2D = referencePoints2D.value[0]
+      const p3D = referencePoints3D.value[0]
+      alignmentParams.offsetX = p3D.x - p2D.x * alignmentParams.scale
+      alignmentParams.offsetY = p3D.z - p2D.y * alignmentParams.scale
+    }
+    
+    // 更新工作流组件
+    if (alignmentWorkflowRef.value) {
+      alignmentWorkflowRef.value.updateAlignmentParams(alignmentParams)
+    }
+    
+    console.log('📐 对齐参数更新:', alignmentParams)
+  }
+}
+
+// 移动端适配状态
+const isMobile = ref(false)
+const mobileDrawerVisible = ref(false)
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
+
 </script>
 
 <style scoped>
@@ -1757,6 +2940,189 @@ const highlightInBimViewer = (embeddedPart) => {
   padding: 12px 20px;
   background-color: #fff;
   border-bottom: 1px solid #ebeef5;
+}
+
+/* ==================== 双视图对齐布局 - 顺序式全屏 ==================== */
+.dual-align-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #f5f7fa;
+}
+
+/* 阶段视图容器 */
+.stage-view-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stage-view-container .view-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(to right, #409eff, #66b1ff);
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.stage-view-container .view-title span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 全屏视图容器 */
+.full-view-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  min-height: 400px;
+}
+
+.full-view-container :deep(.dual-view-canvas-wrapper) {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* 确保MlCadViewer填充整个容器 */
+.full-view-container :deep(.ml-cad-viewer),
+.full-view-container :deep([class*="cad-viewer"]) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 3D全屏视图 */
+.bim-viewer-full {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.bim-viewer-full canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 3D点击提示 */
+.click-hint {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(103, 194, 58, 0.9);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.4);
+  animation: breathe 2s infinite;
+  z-index: 100;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.03); }
+}
+
+/* 视图控制按钮叠加层 */
+.view-controls-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 确认阶段容器 */
+.confirmation-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%);
+}
+
+.result-card {
+  width: 100%;
+  max-width: 600px;
+}
+
+.result-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.result-card .action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #ebeef5;
+}
+
+/* placeholder样式 */
+.dual-cad-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #909399;
+  font-size: 14px;
+}
+
+.dual-cad-placeholder p {
+  margin-top: 12px;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+  .dual-align-container {
+    flex-direction: column;
+  }
+  
+  .dual-left, .dual-right {
+    flex: none;
+    height: 50%;
+    min-height: 300px;
+  }
+  
+  .alignment-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-height: 50vh;
+    border-radius: 16px 16px 0 0;
+  }
 }
 
 /* 添加上传提示样式 */
@@ -2190,95 +3556,100 @@ const highlightInBimViewer = (embeddedPart) => {
 /* 小屏幕移动端 (480px及以下) */
 @media (max-width: 480px) {
   .bim-visualization {
-    padding: 12px;
-    gap: 12px;
+    padding: 0; /* 移除内边距，全屏显示 */
+    gap: 0;
   }
   
-  /* 状态筛选的复选框调整为垂直排列 */
-  .el-checkbox-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .el-checkbox {
-    margin-right: 0 !important;
-  }
-  
-  /* 模型容器调整 */
+  /* 模型容器全屏 */
   .model-container {
-    height: 400px;
-    min-height: 400px;
+    height: 100% !important;
+    min-height: 100vh !important;
+    border-radius: 0;
   }
   
-  /* 预埋件面板调整 */
-  .embedded-parts-panel {
-    height: 350px;
-    min-height: 350px;
+  /* 视图切换按钮调整 */
+  .view-switcher {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    width: 90%;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   }
-  
-  /* 嵌入式部件项优化 */
-  .embedded-part-item {
-    padding: 10px;
-    margin-bottom: 8px;
-  }
-  
-  .item-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .item-info {
-    font-size: 12px;
-  }
-  
-  /* 视图切换按钮调整为垂直 */
+
   .el-radio-group {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .el-radio-button {
     width: 100%;
   }
-  
-  .view-switcher {
-    flex-direction: column;
-    align-items: flex-start;
+
+  .el-radio-button {
+    flex: 1;
   }
-  
+
+  /* 隐藏桌面端特有的头部边距等 */
   .page-header {
-    padding: 0;
-  }
-  
-  .view-controls button {
-    font-size: 13px;
-    padding: 8px 12px;
+    display: none;
   }
 }
 
 /* 超小屏幕 (375px及以下) */
 @media (max-width: 375px) {
-  .model-container {
-    height: 350px;
-    min-height: 350px;
-  }
-  
-  .embedded-parts-panel {
-    height: 300px;
-    min-height: 300px;
-  }
-  
-  .view-controls {
-    flex-direction: column;
-  }
-  
   .view-controls button {
-    width: 100%;
+    padding: 6px 10px;
   }
-  
 }
 
+/* 移动端悬浮按钮 */
+.mobile-menu-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 2000;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  color: #409eff;
+}
+
+.mobile-controls {
+  padding: 10px;
+}
+
+.control-group {
+  margin-bottom: 20px;
+}
+
+.control-group h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #606266;
+}
+
+.mobile-select {
+  width: 100%;
+}
+
+.mobile-filter {
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.mobile-list-scroll {
+  max-height: 400px; /* Limit height to allow scrolling within drawer */
+  overflow-y: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
 </style>
+

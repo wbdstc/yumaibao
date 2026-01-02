@@ -12,7 +12,7 @@ router.put('/:id', authenticate, authorize('projectManager', 'admin'), ProjectCo
 router.delete('/:id', authenticate, authorize('projectManager', 'admin'), ProjectController.deleteProject);
 
 // 楼层管理路由
-router.get('/:projectId/floors', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), ProjectController.getFloors);
+router.get('/:projectId/floors', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ProjectController.getFloors);
 router.get('/:projectId/floors/:floorId', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector'), ProjectController.getFloorById);
 router.post('/:projectId/floors', authenticate, authorize('projectManager', 'admin'), ProjectController.createFloor);
 router.put('/:projectId/floors/:floorId', authenticate, authorize('projectManager', 'admin'), ProjectController.updateFloor);

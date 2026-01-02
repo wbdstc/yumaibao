@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import EmbeddedPart, { EmbeddedPartCreationAttributes } from '../models/EmbeddedPart';
+import Floor from '../models/Floor';
 import { v4 as uuidv4 } from 'uuid';
 import qrcode from 'qrcode';
 import xlsx from 'xlsx';
@@ -70,12 +71,16 @@ class EmbeddedPartController {
     try {
       const { projectId, name, type, modelNumber, description, location, coordinates } = req.body;
 
-      // 生成二维码数据
-      const qrCodeData = `${projectId}-${uuidv4()}`;
+      // 生成预埋件唯一ID
+      const partId = uuidv4();
+      // 获取前端URL（用于生成可扫描跳转的二维码链接）
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+      const qrCodeData = `${frontendUrl}/bim?partId=${partId}`;
 
       // 生成二维码图片到内存
       const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
-      const qrCodeFileName = `${qrCodeData}.png`;
+      const qrCodeFileName = `${partId}.png`;
 
       // 上传到MinIO
       const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
@@ -94,7 +99,6 @@ class EmbeddedPartController {
         }
       );
 
-      const partId = uuidv4();
       const embeddedPart = await EmbeddedPart.create({
         id: partId,
         projectId,
@@ -134,6 +138,25 @@ class EmbeddedPartController {
       const parts = req.body;
       const createdParts = [];
 
+      // 获取项目ID（假设同一批次属于同一个项目，取第一个有项目的作为参考，或者从请求中获取如果设计如此）
+      // 这里假设parts数组中至少有一个元素且包含projectId，或者每个元素都有projectId
+      if (parts.length === 0) {
+        return res.status(400).json({ message: '没有数据可导入' });
+      }
+
+      const projectId = parts[0].projectId;
+
+      // 获取该项目的所有楼层
+      let floorMap = new Map<string, string>(); // name -> id
+      if (projectId) {
+        const floors = await Floor.findByProjectId(projectId);
+        floors.forEach(f => {
+          if (f.name) {
+            floorMap.set(f.name, f.id);
+          }
+        });
+      }
+
       for (const part of parts) {
         const {
           projectId,
@@ -145,16 +168,33 @@ class EmbeddedPartController {
           coordinates,
           code,
           floorId,
+          floorName, // 新增：支持 floorName
           notes,
           coordinates2D
         } = part;
 
-        // 生成二维码数据
-        const qrCodeData = `${projectId}-${uuidv4()}`;
+        // 解析 floorId
+        let finalFloorId = floorId;
+        if (!finalFloorId && floorName) {
+          // 如果只有 floorName，尝试查找对应的 ID
+          finalFloorId = floorMap.get(floorName);
+          if (!finalFloorId) {
+            console.warn(`未找到楼层: ${floorName} (Project: ${projectId})`);
+            // 可以选择在这里报错，或者允许为空，或者创建一个新楼层（通常不建议自动创建）
+            // 这里暂时保持为空
+          }
+        }
+
+        // 生成预埋件唯一ID
+        const partId = uuidv4();
+        // 获取前端URL（用于生成可扫描跳转的二维码链接）
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+        const qrCodeData = `${frontendUrl}/bim?partId=${partId}`;
 
         // 生成二维码图片到内存
         const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
-        const qrCodeFileName = `${qrCodeData}.png`;
+        const qrCodeFileName = `${partId}.png`;
 
         // 上传到MinIO
         const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
@@ -174,6 +214,7 @@ class EmbeddedPartController {
         );
 
         const embeddedPart = await EmbeddedPart.create({
+          id: partId,
           projectId,
           name,
           type,
@@ -182,7 +223,7 @@ class EmbeddedPartController {
           location,
           coordinates,
           code,
-          floorId,
+          floorId: finalFloorId,
           notes,
           coordinates2D,
           qrCodeData,
@@ -233,6 +274,7 @@ class EmbeddedPartController {
         modelNumber?: string;
         location?: string;
         floorId?: string;
+        floorName?: string;
         coordinates?: string | Record<string, any>;
         coordinates2D?: string | Record<string, any>;
         description?: string;
@@ -279,12 +321,16 @@ class EmbeddedPartController {
             }
           }
 
-          // 生成二维码数据
-          const qrCodeData = `${projectId}-${uuidv4()}`;
+          // 生成预埋件唯一ID
+          const partId = uuidv4();
+          // 获取前端URL（用于生成可扫描跳转的二维码链接）
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+          // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+          const qrCodeData = `${frontendUrl}/bim?partId=${partId}`;
 
           // 生成二维码图片到内存
           const qrCodeBuffer = await qrcode.toBuffer(qrCodeData);
-          const qrCodeFileName = `${qrCodeData}.png`;
+          const qrCodeFileName = `${partId}.png`;
 
           // 上传到MinIO
           const { url: qrCodeUrl, objectName } = await uploadFileToMinIO(
@@ -304,6 +350,7 @@ class EmbeddedPartController {
           );
 
           const embeddedPart = await EmbeddedPart.create({
+            id: partId,
             projectId,
             name: row.name,
             code: row.code,
@@ -311,7 +358,14 @@ class EmbeddedPartController {
             modelNumber: row.modelNumber,
             description: row.description || row.notes || '',
             location: row.location,
-            floorId: row.floorId,
+            floorId: row.floorId, // 注意：importEmbeddedParts 主要是解析 Excel 并直接插入，如果需要支持 Excel 里的 floorName 转 floorId，
+            // 最好是复用 batchCreateEmbeddedParts 或者在这里添加类似的查找逻辑。
+            // 鉴于 handleExcelUpload 前端是解析 Excel 后调用 batchCreateEmbeddedParts，
+            // 这个 importEmbeddedParts 方法可能用于旧的直接文件上传接口。
+            // 为了保持一致性，建议也加上查找逻辑，但目前需求主要是前端 Excel 解析上传。
+            // 暂时保持原样，或者如果用户确实用这个接口，也需要改。
+            // 观察前端代码，使用的是 batchCreateEmbeddedParts (POST JSON)，而不是 importEmbeddedParts (POST FILE)。
+            // 所以这里可以暂时不改，或者稍后优化。
             coordinates,
             coordinates2D,
             notes: row.notes || row.description || '',
@@ -445,11 +499,85 @@ class EmbeddedPartController {
     }
   }
 
+  // 批量删除预埋件
+  static async batchDeleteEmbeddedParts(req: Request, res: Response) {
+    try {
+      const { ids } = req.body;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: '请提供要删除的预埋件ID列表' });
+      }
+
+      // 1. 获取要删除的预埋件信息，以便删除关联的MinIO文件
+      const db = getDB();
+      if (db) {
+        const collection = db.collection('embedded_parts');
+        const partsToDelete = await collection.find({ id: { $in: ids } }).toArray();
+
+        // 收集所有关联的二维码图片URL或文件名
+        const qrCodeFiles = partsToDelete
+          .filter((part: any) => part.qrCodeUrl)
+          .map((part: any) => {
+            // 提取文件名或URL
+            return part.qrCodeUrl;
+          });
+
+        if (qrCodeFiles.length > 0) {
+          // 查找文件记录
+          const fileRecords = await (db as any).collection('modelFiles').find({
+            $or: [
+              { originalFilename: { $in: qrCodeFiles.map((url: string) => path.basename(url)) } },
+              { url: { $in: qrCodeFiles } }
+            ]
+          }).toArray();
+
+          // 批量删除MinIO文件
+          for (const record of fileRecords) {
+            try {
+              await deleteFileFromMinIO(record.bucketName, record.objectName);
+            } catch (err) {
+              console.error(`删除MinIO文件失败: ${record.objectName}`, err);
+              // 继续删除其他文件，不中断流程
+            }
+          }
+
+          // 删除文件记录
+          if (fileRecords.length > 0) {
+            await (db as any).collection('modelFiles').deleteMany({
+              _id: { $in: fileRecords.map((r: any) => r._id) }
+            });
+          }
+        }
+      }
+
+      // 2. 批量删除数据库记录
+      const deleteCount = await EmbeddedPart.batchDelete(ids);
+
+      return res.status(200).json({
+        message: '预埋件批量删除成功',
+        count: deleteCount
+      });
+    } catch (error) {
+      console.error('批量删除预埋件失败:', error);
+      return res.status(500).json({ message: '批量删除预埋件失败', error: String(error) });
+    }
+  }
+
   // 按项目获取预埋件
   static async getEmbeddedPartsByProject(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
-      const embeddedParts = await EmbeddedPart.findByProjectId(projectId);
+      const { floorId } = req.query; // 从查询参数中获取楼层ID
+
+      const query: any = { projectId };
+
+      // 如果提供了楼层ID，添加到查询条件中
+      if (floorId) {
+        query.floorId = floorId;
+      }
+
+      // 使用findAll方法支持更灵活的查询
+      const embeddedParts = await EmbeddedPart.findAll(query);
       return res.status(200).json(embeddedParts);
     } catch (error) {
       console.error('按项目获取预埋件失败:', error);
@@ -614,6 +742,45 @@ class EmbeddedPartController {
     } catch (error) {
       console.error('确认验收失败:', error);
       return res.status(500).json({ message: '确认验收失败', error: String(error) });
+    }
+  }
+
+  // 更新扫码状态（通用接口）
+  static async updateScanStatus(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body; // status: 'installed' or 'inspected'
+      const userId = (req as any).user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ message: '未授权' });
+      }
+
+      const embeddedPart = await EmbeddedPart.findById(id);
+      if (!embeddedPart) {
+        return res.status(404).json({ message: '预埋件不存在' });
+      }
+
+      const updateData: any = {
+        status: status,
+      };
+
+      if (status === 'installed') {
+        updateData.installationDate = new Date();
+      } else if (status === 'inspected') {
+        updateData.inspectorId = userId;
+        updateData.inspectionDate = new Date();
+      }
+
+      if (notes !== undefined) {
+        updateData.notes = notes;
+      }
+
+      const updatedPart = await EmbeddedPart.update(id, updateData);
+      return res.status(200).json({ message: '状态更新成功', data: updatedPart });
+    } catch (error) {
+      console.error('状态更新失败:', error);
+      return res.status(500).json({ message: '状态更新失败', error: String(error) });
     }
   }
 

@@ -20,6 +20,7 @@ router.delete('/:id', authenticate, authorize('projectManager', 'admin'), Embedd
 router.post('/batch', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), EmbeddedPartController.batchCreateEmbeddedParts);
 router.post('/import', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), upload.single('file'), EmbeddedPartController.importEmbeddedParts);
 router.put('/batch/status', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector'), EmbeddedPartController.batchUpdateStatus);
+router.post('/batch/delete', authenticate, authorize('projectManager', 'admin'), EmbeddedPartController.batchDeleteEmbeddedParts);
 
 // 按项目和楼层获取预埋件
 router.get('/project/:projectId', authenticate, EmbeddedPartController.getEmbeddedPartsByProject);
@@ -27,6 +28,7 @@ router.get('/project/:projectId/floor/:floorId', authenticate, EmbeddedPartContr
 
 // 二维码相关
 router.get('/:id/qrcode', authenticate, EmbeddedPartController.generateQRCode);
+router.put('/:id/scan-status', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), EmbeddedPartController.updateScanStatus);
 router.post('/:id/install', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'installer'), EmbeddedPartController.confirmInstallation);
 router.post('/:id/inspect', authenticate, authorize('projectManager', 'admin', 'qualityInspector'), EmbeddedPartController.confirmInspection);
 

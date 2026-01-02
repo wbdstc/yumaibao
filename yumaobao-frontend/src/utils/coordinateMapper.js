@@ -19,6 +19,17 @@ export class CoordinateMapper {
     constructor(projectConfig) {
         this.config = projectConfig || this.getDefaultConfig()
         this.cache = new Map() // 坐标转换缓存
+
+        // 视口状态追踪
+        this.viewportState = {
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
+            rotation: 0
+        }
+
+        // 转换矩阵 (4x4 矩阵，以数组形式存储)
+        this.transformMatrix = this.createIdentityMatrix()
     }
 
     /**
@@ -297,6 +308,188 @@ export class CoordinateMapper {
             const dz = coord2.z - coord1.z
             return Math.sqrt(dx * dx + dy * dy + dz * dz)
         }
+    }
+
+    /**
+     * 创建单位矩阵 (4x4)
+     * @returns {Array} 4x4 单位矩阵
+     */
+    createIdentityMatrix() {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        ]
+    }
+
+    /**
+     * 设置当前缩放因子
+     * @param {number} factor - 缩放因子
+     */
+    setZoomFactor(factor) {
+        this.viewportState.zoom = factor
+        this.updateTransformMatrix()
+        this.clearCache()
+    }
+
+    /**
+     * 获取当前缩放因子
+     * @returns {number} 缩放因子
+     */
+    getZoomFactor() {
+        return this.viewportState.zoom
+    }
+
+    /**
+     * 设置视口偏移
+     * @param {number} offsetX - X轴偏移
+     * @param {number} offsetY - Y轴偏移
+     */
+    setViewOffset(offsetX, offsetY) {
+        this.viewportState.offsetX = offsetX
+        this.viewportState.offsetY = offsetY
+        this.updateTransformMatrix()
+    }
+
+    /**
+     * 设置旋转角度
+     * @param {number} rotation - 旋转角度（度）
+     */
+    setRotation(rotation) {
+        this.viewportState.rotation = rotation
+        this.updateTransformMatrix()
+        this.clearCache()
+    }
+
+    /**
+     * 获取当前转换矩阵
+     * @returns {Array} 4x4 转换矩阵
+     */
+    getTransformMatrix() {
+        return [...this.transformMatrix]
+    }
+
+    /**
+     * 更新转换矩阵
+     */
+    updateTransformMatrix() {
+        const { zoom, offsetX, offsetY, rotation } = this.viewportState
+        const rad = rotation * Math.PI / 180
+        const cos = Math.cos(rad)
+        const sin = Math.sin(rad)
+
+        // 构建变换矩阵: Translation * Rotation * Scale
+        this.transformMatrix = [
+            zoom * cos, -zoom * sin, 0, offsetX,
+            zoom * sin, zoom * cos, 0, offsetY,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        ]
+    }
+
+    /**
+     * 同步视口状态
+     * @param {Object} viewport2D - 2D视口状态
+     * @param {Object} viewport3D - 3D视口状态 (可选)
+     */
+    syncViewportState(viewport2D, viewport3D = null) {
+        if (viewport2D) {
+            this.viewportState.zoom = viewport2D.zoom || 1
+            this.viewportState.offsetX = viewport2D.offsetX || 0
+            this.viewportState.offsetY = viewport2D.offsetY || 0
+            this.viewportState.rotation = viewport2D.rotation || 0
+            this.updateTransformMatrix()
+        }
+
+        return {
+            viewport2D: { ...this.viewportState },
+            transformMatrix: this.getTransformMatrix()
+        }
+    }
+
+    /**
+     * 应用视口变换到坐标
+     * @param {Object} screenCoord - 屏幕坐标 { x, y }
+     * @returns {Object} 世界坐标 { x, y }
+     */
+    screenToWorld(screenCoord) {
+        const { zoom, offsetX, offsetY, rotation } = this.viewportState
+
+        // 反向应用变换
+        let x = (screenCoord.x - offsetX) / zoom
+        let y = (screenCoord.y - offsetY) / zoom
+
+        // 反向旋转
+        if (rotation !== 0) {
+            const rad = -rotation * Math.PI / 180
+            const cos = Math.cos(rad)
+            const sin = Math.sin(rad)
+            const newX = x * cos - y * sin
+            const newY = x * sin + y * cos
+            x = newX
+            y = newY
+        }
+
+        return { x, y }
+    }
+
+    /**
+     * 将世界坐标转换为屏幕坐标
+     * @param {Object} worldCoord - 世界坐标 { x, y }
+     * @returns {Object} 屏幕坐标 { x, y }
+     */
+    worldToScreen(worldCoord) {
+        const { zoom, offsetX, offsetY, rotation } = this.viewportState
+
+        let x = worldCoord.x
+        let y = worldCoord.y
+
+        // 应用旋转
+        if (rotation !== 0) {
+            const rad = rotation * Math.PI / 180
+            const cos = Math.cos(rad)
+            const sin = Math.sin(rad)
+            const newX = x * cos - y * sin
+            const newY = x * sin + y * cos
+            x = newX
+            y = newY
+        }
+
+        // 应用缩放和偏移
+        x = x * zoom + offsetX
+        y = y * zoom + offsetY
+
+        return { x, y }
+    }
+
+    /**
+     * 获取完整的视口状态
+     * @returns {Object} 视口状态
+     */
+    getViewportState() {
+        return { ...this.viewportState }
+    }
+
+    /**
+     * 计算两个坐标集之间的缩放比例
+     * @param {Array} points2D - 2D点数组
+     * @param {Array} points3D - 3D点数组  
+     * @returns {number} 缩放比例
+     */
+    calculateScaleFromPoints(points2D, points3D) {
+        if (points2D.length < 2 || points3D.length < 2) {
+            return 1
+        }
+
+        const dist2D = this.calculateDistance(points2D[0], points2D[1], '2d')
+        const dist3D = Math.sqrt(
+            Math.pow(points3D[1].x - points3D[0].x, 2) +
+            Math.pow(points3D[1].z - points3D[0].z, 2)
+        )
+
+        if (dist2D === 0) return 1
+        return dist3D / dist2D
     }
 }
 

@@ -10,6 +10,7 @@ const xlsx_1 = __importDefault(require("xlsx"));
 const path_1 = __importDefault(require("path"));
 const mongodb_1 = require("../config/mongodb");
 const fileUploadService_1 = require("../utils/fileUploadService");
+const minio_1 = require("../config/minio");
 class EmbeddedPartController {
     // 获取所有预埋件
     static async getAllEmbeddedParts(req, res) {
@@ -64,13 +65,17 @@ class EmbeddedPartController {
     static async createEmbeddedPart(req, res) {
         try {
             const { projectId, name, type, modelNumber, description, location, coordinates } = req.body;
-            // 生成二维码数据
-            const qrCodeData = `${projectId}-${(0, uuid_1.v4)()}`;
+            // 生成预埋件唯一ID
+            const partId = (0, uuid_1.v4)();
+            // 获取前端URL（用于生成可扫描跳转的二维码链接）
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+            const qrCodeData = `${frontendUrl}/bim-visualization?partId=${partId}`;
             // 生成二维码图片到内存
             const qrCodeBuffer = await qrcode_1.default.toBuffer(qrCodeData);
-            const qrCodeFileName = `${qrCodeData}.png`;
+            const qrCodeFileName = `${partId}.png`;
             // 上传到MinIO
-            const { url: qrCodeUrl } = await (0, fileUploadService_1.uploadFileToMinIO)('qrcodes', {
+            const { url: qrCodeUrl, objectName } = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.QRCODES, {
                 buffer: qrCodeBuffer,
                 originalname: qrCodeFileName,
                 mimetype: 'image/png',
@@ -83,7 +88,7 @@ class EmbeddedPartController {
                 path: ''
             });
             const embeddedPart = await EmbeddedPart_1.default.create({
-                id: (0, uuid_1.v4)(),
+                id: partId,
                 projectId,
                 name,
                 type,
@@ -95,6 +100,17 @@ class EmbeddedPartController {
                 qrCodeUrl,
                 status: 'pending'
             });
+            // 保存文件记录到modelFiles集合
+            const db = (0, mongodb_1.getDB)();
+            if (db) {
+                await db.collection('modelFiles').insertOne({
+                    modelId: partId,
+                    originalFilename: qrCodeFileName,
+                    objectName,
+                    bucketName: minio_1.MINIO_BUCKETS.QRCODES,
+                    createdAt: new Date()
+                });
+            }
             return res.status(201).json({ message: '预埋件创建成功', data: embeddedPart });
         }
         catch (error) {
@@ -108,14 +124,18 @@ class EmbeddedPartController {
             const parts = req.body;
             const createdParts = [];
             for (const part of parts) {
-                const { projectId, name, type, modelNumber, description, location, coordinates } = part;
-                // 生成二维码数据
-                const qrCodeData = `${projectId}-${(0, uuid_1.v4)()}`;
+                const { projectId, name, type, modelNumber, description, location, coordinates, code, floorId, notes, coordinates2D } = part;
+                // 生成预埋件唯一ID
+                const partId = (0, uuid_1.v4)();
+                // 获取前端URL（用于生成可扫描跳转的二维码链接）
+                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+                const qrCodeData = `${frontendUrl}/bim-visualization?partId=${partId}`;
                 // 生成二维码图片到内存
                 const qrCodeBuffer = await qrcode_1.default.toBuffer(qrCodeData);
-                const qrCodeFileName = `${qrCodeData}.png`;
+                const qrCodeFileName = `${partId}.png`;
                 // 上传到MinIO
-                const { url: qrCodeUrl } = await (0, fileUploadService_1.uploadFileToMinIO)('qrcodes', {
+                const { url: qrCodeUrl, objectName } = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.QRCODES, {
                     buffer: qrCodeBuffer,
                     originalname: qrCodeFileName,
                     mimetype: 'image/png',
@@ -128,16 +148,32 @@ class EmbeddedPartController {
                     path: ''
                 });
                 const embeddedPart = await EmbeddedPart_1.default.create({
+                    id: partId,
                     projectId,
                     name,
                     type,
                     modelNumber,
-                    description,
+                    description: description || notes, // 优先使用description，如果没有则使用notes
                     location,
                     coordinates,
+                    code,
+                    floorId,
+                    notes,
+                    coordinates2D,
                     qrCodeData,
                     qrCodeUrl
                 });
+                // 保存文件记录到modelFiles集合
+                const db = (0, mongodb_1.getDB)();
+                if (db) {
+                    await db.collection('modelFiles').insertOne({
+                        modelId: embeddedPart.id,
+                        originalFilename: qrCodeFileName,
+                        objectName,
+                        bucketName: minio_1.MINIO_BUCKETS.QRCODES,
+                        createdAt: new Date()
+                    });
+                }
                 createdParts.push(embeddedPart);
             }
             return res.status(201).json({ message: '预埋件批量创建成功', data: createdParts });
@@ -169,25 +205,42 @@ class EmbeddedPartController {
                 const row = data[i];
                 try {
                     // 验证必填字段
-                    if (!row.name || !row.type || !row.modelNumber || !row.location || !row.coordinates) {
+                    // 验证必填字段 - 让coordinates可选，因为可能只提供坐标XYZ或2D坐标
+                    if (!row.name || !row.type || !row.modelNumber || !row.location) {
                         errors.push({ row: i + 2, message: '缺少必填字段' });
                         continue;
                     }
-                    // 解析坐标
-                    let coordinates;
+                    // 解析坐标 (coordinates)
+                    let coordinates = row.coordinates;
                     if (typeof row.coordinates === 'string') {
-                        coordinates = JSON.parse(row.coordinates);
+                        try {
+                            coordinates = JSON.parse(row.coordinates);
+                        }
+                        catch (e) {
+                            coordinates = undefined;
+                        }
                     }
-                    else {
-                        coordinates = row.coordinates;
+                    // 解析2D坐标 (coordinates2D)
+                    let coordinates2D = row.coordinates2D;
+                    if (typeof row.coordinates2D === 'string') {
+                        try {
+                            coordinates2D = JSON.parse(row.coordinates2D);
+                        }
+                        catch (e) {
+                            coordinates2D = undefined;
+                        }
                     }
-                    // 生成二维码数据
-                    const qrCodeData = `${projectId}-${(0, uuid_1.v4)()}`;
+                    // 生成预埋件唯一ID
+                    const partId = (0, uuid_1.v4)();
+                    // 获取前端URL（用于生成可扫描跳转的二维码链接）
+                    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                    // 生成二维码数据 - 使用完整URL，扫码后可直接跳转到BIM可视化页面
+                    const qrCodeData = `${frontendUrl}/bim-visualization?partId=${partId}`;
                     // 生成二维码图片到内存
                     const qrCodeBuffer = await qrcode_1.default.toBuffer(qrCodeData);
-                    const qrCodeFileName = `${qrCodeData}.png`;
+                    const qrCodeFileName = `${partId}.png`;
                     // 上传到MinIO
-                    const { url: qrCodeUrl } = await (0, fileUploadService_1.uploadFileToMinIO)('qrcodes', {
+                    const { url: qrCodeUrl, objectName } = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.QRCODES, {
                         buffer: qrCodeBuffer,
                         originalname: qrCodeFileName,
                         mimetype: 'image/png',
@@ -200,16 +253,32 @@ class EmbeddedPartController {
                         path: ''
                     });
                     const embeddedPart = await EmbeddedPart_1.default.create({
+                        id: partId,
                         projectId,
                         name: row.name,
+                        code: row.code,
                         type: row.type,
                         modelNumber: row.modelNumber,
-                        description: row.description || '',
+                        description: row.description || row.notes || '',
                         location: row.location,
+                        floorId: row.floorId,
                         coordinates,
+                        coordinates2D,
+                        notes: row.notes || row.description || '',
                         qrCodeData,
                         qrCodeUrl
                     });
+                    // 保存文件记录到modelFiles集合
+                    const db = (0, mongodb_1.getDB)();
+                    if (db) {
+                        await db.collection('modelFiles').insertOne({
+                            modelId: embeddedPart.id,
+                            originalFilename: qrCodeFileName,
+                            objectName,
+                            bucketName: minio_1.MINIO_BUCKETS.QRCODES,
+                            createdAt: new Date()
+                        });
+                    }
                     importedParts.push(embeddedPart);
                 }
                 catch (err) {
@@ -353,15 +422,51 @@ class EmbeddedPartController {
             if (!db) {
                 return res.status(500).json({ message: '数据库连接失败' });
             }
-            // 查询二维码文件记录
-            const fileRecord = await db.collection('modelFiles').findOne({
+            // 查找二维码文件记录
+            let fileRecord = await db.collection('modelFiles').findOne({
                 $or: [
+                    { modelId: id },
                     { originalFilename: path_1.default.basename(embeddedPart.qrCodeUrl) },
                     { url: embeddedPart.qrCodeUrl }
                 ]
             });
+            // 如果记录不存在，由于这是一个自愈逻辑，我们在这里重新生成并保存记录
             if (!fileRecord) {
-                return res.status(404).json({ message: '二维码文件记录不存在' });
+                console.log(`正在为预埋件 ${id} 重新生成缺失的二维码记录...`);
+                try {
+                    // 重新生成二维码图片到内存
+                    const qrCodeBuffer = await qrcode_1.default.toBuffer(embeddedPart.qrCodeData);
+                    const qrCodeFileName = `${embeddedPart.qrCodeData}.png`;
+                    // 重新上传到MinIO
+                    const { url: qrCodeUrl, objectName } = await (0, fileUploadService_1.uploadFileToMinIO)(minio_1.MINIO_BUCKETS.QRCODES, {
+                        buffer: qrCodeBuffer,
+                        originalname: qrCodeFileName,
+                        mimetype: 'image/png',
+                        size: qrCodeBuffer.length,
+                        fieldname: 'qrcode',
+                        encoding: '7bit',
+                        stream: null,
+                        destination: '',
+                        filename: qrCodeFileName,
+                        path: ''
+                    });
+                    // 更新预埋件的URL（以防万一URL发生了变化）
+                    await EmbeddedPart_1.default.update(id, { qrCodeUrl });
+                    // 创建缺失的文件记录
+                    fileRecord = {
+                        modelId: id,
+                        originalFilename: qrCodeFileName,
+                        objectName,
+                        bucketName: minio_1.MINIO_BUCKETS.QRCODES,
+                        createdAt: new Date()
+                    };
+                    await db.collection('modelFiles').insertOne(fileRecord);
+                    console.log(`预埋件 ${id} 的二维码记录已成功补全`);
+                }
+                catch (genError) {
+                    console.error('重新生成二维码失败:', genError);
+                    return res.status(500).json({ message: '二维码记录不存在且重新生成失败' });
+                }
             }
             // 从MinIO下载文件
             const fileBuffer = await (0, fileUploadService_1.downloadFileFromMinIO)(fileRecord.bucketName, fileRecord.objectName);

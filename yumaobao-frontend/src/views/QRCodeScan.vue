@@ -174,11 +174,14 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { Camera, VideoPlay, VideoPause, Picture, RefreshRight } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 import api from '../api/index.js'
 import { useUserStore } from '../stores/index.js'
+
+const router = useRouter()
 
 // 扫描状态
 const scanning = ref(false)
@@ -241,6 +244,12 @@ const toggleScan = async () => {
 // 开始扫描
 const startScan = async () => {
   try {
+    // 检查安全上下文 (浏览器限制：非Localhost必须使用HTTPS)
+    const isSecureContext = window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (!isSecureContext && location.protocol !== 'https:') {
+        throw new Error('浏览器安全限制：摄像头仅在 HTTPS 或 Localhost 下可用。当前为非安全环境，无法访问。');
+    }
+
     // 获取摄像头权限
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -356,8 +365,52 @@ const processScanResult = async (qrCodeData) => {
       background: 'rgba(0, 0, 0, 0.7)'
     })
 
+    // 检查扫描结果是否为URL格式（新版二维码）
+    let partId = null
+    if (qrCodeData.startsWith('http://') || qrCodeData.startsWith('https://')) {
+      try {
+        const url = new URL(qrCodeData)
+        partId = url.searchParams.get('partId')
+        console.log('检测到URL格式二维码，partId:', partId)
+      } catch (e) {
+        console.error('解析URL失败:', e)
+      }
+    }
+
+    // 如果从URL中提取到partId，优先使用partId查询
+    if (partId) {
+      // 检查本地缓存
+      const cachedItem = localCache.value.get(partId)
+      if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_EXPIRY) {
+        // 检查项目权限
+        if (isRestrictedUser.value && !userProjects.value.includes(cachedItem.data.projectId)) {
+          ElMessage.error('您没有权限查看该项目的预埋件')
+          addToHistory('error', '扫描失败', '无权限查看该项目的预埋件')
+          return
+        }
+        
+        scanResult.value = cachedItem.data
+        ElMessage.success('从本地缓存加载成功')
+        addToHistory('success', '扫描成功', `扫描到预埋件: ${cachedItem.data.name} (${cachedItem.data.code})`)
+        return
+      }
+
+      // 通过partId直接获取预埋件详情
+      // const response = await api.embeddedPart.getEmbeddedPart(partId)
+      // const data = response.data || response
+      
+      // 直接跳转到BIM可视化页面，而不是并在当前页面显示结果
+      ElMessage.success('扫描成功，正在跳转到BIM可视化页面...')
+      router.push({
+        path: '/bim',
+        query: { partId: partId }
+      })
+      return
+    }
+
+    // 兼容旧版二维码格式（非URL格式）
     // 首先检查本地缓存
-    const cachedItem = localCache.get(qrCodeData)
+    const cachedItem = localCache.value.get(qrCodeData)
     if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_EXPIRY) {
       // 检查项目权限
       if (isRestrictedUser.value && !userProjects.value.includes(cachedItem.data.projectId)) {
@@ -372,7 +425,7 @@ const processScanResult = async (qrCodeData) => {
       return
     }
 
-    // 调用后端API验证二维码
+    // 调用后端API验证二维码（旧版格式）
     const response = await api.mobile.scanQRCode({ qrCodeData })
     
     // 检查项目权限
@@ -385,7 +438,7 @@ const processScanResult = async (qrCodeData) => {
     scanResult.value = response.data
     
     // 保存到本地缓存
-    localCache.set(qrCodeData, {
+    localCache.value.set(qrCodeData, {
       data: response.data,
       timestamp: Date.now()
     })

@@ -127,6 +127,12 @@ class EmbeddedPartModel {
     const result = await this.getCollection().deleteMany({ projectId });
     return result.deletedCount > 0;
   }
+
+  // 批量删除嵌入部件
+  async batchDelete(ids: string[]): Promise<number> {
+    const result = await this.getCollection().deleteMany({ id: { $in: ids } });
+    return result.deletedCount;
+  }
 }
 
 // 导出单例实例

@@ -10,6 +10,15 @@
         </div>
       </div>
       <div class="header-actions">
+        <el-button 
+          type="danger" 
+          icon="Delete" 
+          :disabled="selectedRows.length === 0 || !canDelete" 
+          @click="handleBatchDelete"
+          v-if="canDelete"
+        >
+          批量删除
+        </el-button>
         <el-upload
           class="upload-excel"
           action=""
@@ -124,7 +133,9 @@
         v-loading="loading"
         empty-text="暂无数据"
         :row-class-name="getRowClassName"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column type="selection" width="55" />
         <el-table-column prop="name" label="名称" min-width="120" />
         <el-table-column prop="code" label="编号" width="120" />
         <el-table-column prop="type" label="类型" width="100" />
@@ -428,6 +439,9 @@ export default {
     const qrcodeUrl = ref('')
     const selectedEmbeddedPart = ref(null)
 
+    // 批量选择
+    const selectedRows = ref([])
+
     // 表单验证规则
     const formRules = reactive({
       projectId: [{ required: true, message: '请选择项目', trigger: 'change' }],
@@ -482,9 +496,17 @@ export default {
           floors.value = []
           return
         }
-        const response = await api.floor.getFloors(projectId) // 直接传入projectId，不是对象
+        // 传入 suppress403: true 以抑制全局的403错误提示
+        const response = await api.floor.getFloors(projectId, { suppress403: true }) 
         floors.value = response
       } catch (error) {
+        // 如果是403错误，静默处理
+        if (error.response && error.response.status === 403) {
+          console.warn('EmbeddedPartManagement: 用户没有权限获取楼层列表 (403)，已静默处理')
+          floors.value = []
+          return
+        }
+        
         console.error('获取楼层列表失败:', error)
         ElMessage.error('获取楼层列表失败')
         floors.value = [] // 发生错误时确保floors是数组
@@ -665,6 +687,46 @@ export default {
       // 如果不是受限用户，搜索所有项目的数据
       if (!isRestrictedUser.value) {
         searchEmbeddedParts()
+      }
+      // 如果不是受限用户，搜索所有项目的数据
+      if (!isRestrictedUser.value) {
+        searchEmbeddedParts()
+      }
+    }
+
+    // 处理表格选择变化
+    const handleSelectionChange = (selection) => {
+      selectedRows.value = selection
+    }
+
+    // 批量删除
+    const handleBatchDelete = async () => {
+      if (selectedRows.value.length === 0) return
+
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除选中的 ${selectedRows.value.length} 个预埋件吗？此操作不可恢复。`,
+          '批量删除确认',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        const ids = selectedRows.value.map(row => row.id)
+        const response = await api.embeddedPart.batchDeleteEmbeddedParts(ids)
+        
+        ElMessage.success(response.message || '批量删除成功')
+        // 重新加载数据
+        searchEmbeddedParts()
+        // 清空选择
+        selectedRows.value = []
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量删除失败:', error)
+          ElMessage.error('批量删除失败')
+        }
       }
     }
 
@@ -970,7 +1032,7 @@ export default {
           modelNumber: 'M10',
           type: '锚栓',
           location: '一层A区',
-          floorId: sampleFloorId,
+          floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
           status: 'pending',
           coordinateX: 1000,
           coordinateY: 2000,
@@ -982,7 +1044,7 @@ export default {
           modelNumber: 'M12',
           type: '螺栓',
           location: '二层B区',
-          floorId: sampleFloorId,
+          floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
           status: 'pending',
           coordinateX: 1500,
           coordinateY: 2500,
@@ -991,8 +1053,8 @@ export default {
       ]
       
       // 如果没有楼层数据，添加提示
-      if (!selectedProject || floors.value.length === 0) {
-        templateData[0].notes = '请将FLOOR_ID_EXAMPLE替换为实际的楼层ID'
+      if (!selectedProject) {
+        templateData[0].notes = '请先选择项目再下载模板'
       }
       
       const worksheet = XLSX.utils.json_to_sheet(templateData)
@@ -1059,7 +1121,10 @@ export default {
       handleSizeChange,
       handleCurrentChange,
       handleDialogClose,
-      handleQRCodeDialogClosed
+      handleQRCodeDialogClosed,
+      handleSelectionChange,
+      handleBatchDelete,
+      selectedRows
     }
   }
 }

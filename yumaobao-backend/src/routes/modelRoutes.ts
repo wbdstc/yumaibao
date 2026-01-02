@@ -11,7 +11,7 @@ const upload = multer({ storage });
 const router = Router();
 
 // 模型管理路由
-router.get('/', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), ModelController.getAllModels);
+router.get('/', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController.getAllModels);
 
 // 按项目和楼层获取模型
 router.get('/project/:projectId', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), ModelController.getAllModels);

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPresignedUrl = exports.deleteFileFromMinIO = exports.downloadFileFromMinIO = exports.uploadFileToMinIO = exports.cleanupTempFiles = exports.generateSafeOutputFilePath = exports.generateSafeTempFilePath = exports.validateConversionParams = exports.executeWithTimeout = exports.conversionProgressManager = exports.generateErrorDetails = void 0;
+exports.getPresignedUrl = exports.deleteFileFromMinIO = exports.downloadFileFromMinIO = exports.uploadFileToMinIO = exports.cleanupTempFiles = exports.generateSafeOutputFilePath = exports.generateSafeTempFilePath = exports.getFileStreamFromMinIO = exports.validateConversionParams = exports.executeWithTimeout = exports.conversionProgressManager = exports.generateErrorDetails = void 0;
 const minio_1 = require("../config/minio");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -124,6 +124,18 @@ const sanitizeFileName = (fileName) => {
         return `file_${Date.now()}`;
     }
 };
+// 新增：获取文件流（推荐用于下载）
+const getFileStreamFromMinIO = async (bucketName, objectName) => {
+    try {
+        // 直接返回 MinIO 的原始流
+        return await minio_1.minioClient.getObject(bucketName, objectName);
+    }
+    catch (error) {
+        console.error('获取文件流失败:', error);
+        throw error;
+    }
+};
+exports.getFileStreamFromMinIO = getFileStreamFromMinIO;
 // 工具函数：生成安全的临时文件路径
 const generateSafeTempFilePath = (originalFileName, prefix = 'temp') => {
     try {

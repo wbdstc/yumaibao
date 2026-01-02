@@ -105,8 +105,12 @@ api.interceptors.response.use(
           }, 1000)
           break
         case 403:
-          errorMessage = '没有权限访问此资源'
-          ElMessage.error(errorMessage)
+          if (error.config && error.config.suppress403) {
+            console.warn('响应拦截器：403错误被抑制', error.config.url)
+          } else {
+            errorMessage = '没有权限访问此资源'
+            ElMessage.error(errorMessage)
+          }
           break
         case 404:
           // 更详细的404错误信息
@@ -236,8 +240,8 @@ export default {
   },
   // 楼层相关API
   floor: {
-    getFloors(projectId) {
-      return projectId ? api.get(`/projects/${projectId}/floors`) : Promise.resolve([])
+    getFloors(projectId, config = {}) {
+      return projectId ? api.get(`/projects/${projectId}/floors`, config) : Promise.resolve([])
     },
     getFloor(projectId, floorId) {
       return api.get(`/projects/${projectId}/floors/${floorId}`)
@@ -284,14 +288,17 @@ export default {
     batchCreateEmbeddedParts(data) {
       return api.post('/embedded-parts/batch', data)
     },
+    batchDeleteEmbeddedParts(ids) {
+      return api.post('/embedded-parts/batch/delete', { ids })
+    },
     generateQRCode(id) {
       return api.get(`/embedded-parts/${id}/qrcode`, { responseType: 'blob' })
     }
   },
   // BIM模型相关API
   bimModel: {
-    getBIMModels(params) {
-      return api.get('/models', { params })
+    getBIMModels(params, config = {}) {
+      return api.get('/models', { params, ...config })
     },
     getBIMModel(id) {
       return api.get(`/models/${id}`)
@@ -335,10 +342,10 @@ export default {
       return api.post('/mobile/scan-qrcode', data)
     },
     installEmbeddedPart(id) {
-      return api.post(`/mobile/embedded-parts/${id}/install`)
+      return api.post(`/mobile/embedded-parts/${id}/install`, {})
     },
-    inspectEmbeddedPart(id) {
-      return api.post(`/mobile/embedded-parts/${id}/inspect`)
+    inspectEmbeddedPart(id, data) {
+      return api.post(`/mobile/embedded-parts/${id}/inspect`, data)
     },
     getMobileProjects() {
       return api.get('/mobile/projects')
