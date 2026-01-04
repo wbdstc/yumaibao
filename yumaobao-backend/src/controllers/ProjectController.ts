@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Project from '../models/Project';
 import Floor from '../models/Floor';
 import Model from '../models/Model';
+import EmbeddedPart from '../models/EmbeddedPart';
 
 class ProjectController {
   // 项目管理
@@ -12,23 +13,23 @@ class ProjectController {
       console.log('请求URL:', req.url);
       console.log('请求方法:', req.method);
       console.log('请求头:', req.headers);
-      
+
       const user = (req as any).user;
       let projects: any[] = [];
-      
+
       console.log('获取项目列表 - 用户信息:', user ? { id: user.id, role: user.role } : '未登录');
-      
+
       try {
         // 简化逻辑，先尝试获取所有项目
         console.log('尝试获取所有项目');
         projects = await Project.findAll();
         console.log('获取项目列表成功 - 项目数量:', projects.length);
-        
+
         return res.status(200).json(projects);
       } catch (dbError) {
         console.error('数据库查询失败:', dbError);
         console.error('数据库错误堆栈:', (dbError as Error).stack);
-        
+
         // 数据库查询失败，返回空数组作为降级策略
         console.log('数据库查询失败，返回空数组');
         return res.status(200).json([]);
@@ -36,8 +37,8 @@ class ProjectController {
     } catch (error) {
       console.error('获取项目列表失败:', error);
       console.error('错误堆栈:', (error as Error).stack);
-      return res.status(500).json({ 
-        message: '获取项目列表失败', 
+      return res.status(500).json({
+        message: '获取项目列表失败',
         error: String(error),
         stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
       });
@@ -55,7 +56,7 @@ class ProjectController {
 
       // 获取项目关联的楼层
       const floors = await Floor.findByProjectId(id);
-      
+
       // 获取每个楼层关联的模型
       for (const floor of floors) {
         const models = await Model.findByFloorId(floor.id);
@@ -135,7 +136,10 @@ class ProjectController {
 
       // 删除项目相关的楼层
       await Floor.deleteByProjectId(id);
-      
+
+      // 删除项目相关的预埋件 (新增: 确保数据清理干净)
+      await EmbeddedPart.deleteByProjectId(id);
+
       // 删除项目
       await Project.delete(id);
       return res.status(200).json({ message: '项目删除成功' });
@@ -168,7 +172,7 @@ class ProjectController {
 
       // 获取楼层关联的模型
       const models = await Model.findByFloorId(floorId);
-      
+
       return res.status(200).json({ ...floor, models });
     } catch (error) {
       console.error('获取楼层详情失败:', error);
@@ -238,7 +242,7 @@ class ProjectController {
 
       // 删除楼层相关的模型
       await Model.deleteByFloorId(floorId);
-      
+
       // 删除楼层
       await Floor.delete(floorId);
       return res.status(200).json({ message: '楼层删除成功' });

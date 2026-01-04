@@ -168,9 +168,14 @@ class EmbeddedPartController {
           coordinates,
           code,
           floorId,
-          floorName, // 新增：支持 floorName
+          floorName,
           notes,
-          coordinates2D
+          coordinates2D,
+          status,           // 新增：允许传入状态
+          statusHistory,    // 新增：允许传入历史记录
+          installationDate, // 新增
+          inspectionDate,   // 新增
+          inspectorId       // 新增
         } = part;
 
         // 解析 floorId
@@ -180,8 +185,6 @@ class EmbeddedPartController {
           finalFloorId = floorMap.get(floorName);
           if (!finalFloorId) {
             console.warn(`未找到楼层: ${floorName} (Project: ${projectId})`);
-            // 可以选择在这里报错，或者允许为空，或者创建一个新楼层（通常不建议自动创建）
-            // 这里暂时保持为空
           }
         }
 
@@ -219,7 +222,7 @@ class EmbeddedPartController {
           name,
           type,
           modelNumber,
-          description: description || notes, // 优先使用description，如果没有则使用notes
+          description: description || notes,
           location,
           coordinates,
           code,
@@ -227,7 +230,12 @@ class EmbeddedPartController {
           notes,
           coordinates2D,
           qrCodeData,
-          qrCodeUrl
+          qrCodeUrl,
+          status: status || 'pending', // 使用传入的状态，默认为 pending
+          ...(statusHistory && { statusHistory }), // 如果有历史记录则传入
+          ...(installationDate && { installationDate }),
+          ...(inspectionDate && { inspectionDate }),
+          ...(inspectorId && { inspectorId })
         });
 
         // 保存文件记录到modelFiles集合

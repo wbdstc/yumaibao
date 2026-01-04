@@ -89,6 +89,19 @@
           </el-form-item>
         </el-form>
       </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">演示数据</h3>
+        <p style="margin-left: 150px; color: #606266; margin-bottom: 20px;">
+          在此处生成或清除模拟数据，用于展示系统功能。生成的数据将归类于"演示项目"中。
+        </p>
+        <el-form label-width="150px" class="settings-form">
+          <el-form-item>
+            <el-button type="success" @click="generateDemoData" :loading="generatingDemoData">生成演示数据</el-button>
+            <el-button type="danger" @click="clearDemoData" :loading="clearingDemoData">清除演示数据</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
       
       <div class="settings-section">
         <h3 class="section-title">系统信息</h3>
@@ -124,6 +137,7 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '../api/index'
 
 export default {
   name: 'SystemSettings',
@@ -151,6 +165,253 @@ export default {
       autoBackup: false,
       backupFrequency: 'weekly'
     })
+
+    const generatingDemoData = ref(false)
+    const clearingDemoData = ref(false)
+
+    // 生成随机字符串
+    const randomString = (length) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+      let result = ''
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
+      return result
+    }
+
+    // 生成过去30天内的随机日期
+    const randomDate = (start, end) => {
+      return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()))
+    }
+
+    // 生成模拟数据
+    const generateDemoData = async () => {
+      try {
+        await ElMessageBox.confirm(
+          '此操作将生成一个包含随机楼层和预埋件的演示项目，仅用于展示目的。确定要继续吗？',
+          '生成演示数据',
+          {
+            confirmButtonText: '生成',
+            cancelButtonText: '取消',
+            type: 'info'
+          }
+        )
+
+        generatingDemoData.value = true
+        
+        // 1. 生成逼真的项目名称和代码
+        const projectNames = ['CBD金融中心一期', '滨江首府住宅区', '高新科技园B栋', '东部医疗中心住院部', '轨道交通12号线枢纽']
+        const randomName = projectNames[Math.floor(Math.random() * projectNames.length)]
+        const randomCode = `PRJ-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`
+        
+        const projectRes = await api.project.createProject({
+          name: `${randomName}`,
+          code: randomCode,
+          description: '重点工程建设项目，包含地下室及地上主体结构。',
+          location: '市中心商务区',
+          startDate: new Date(),
+          endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 2)),
+          status: 'under_construction'
+        })
+        
+        // 处理API响应结构
+        const projectId = projectRes.data?.id || projectRes.id
+        if (!projectId) throw new Error('创建项目失败，未获取到ID')
+        
+        // 保存生成的演示项目ID到本地存储
+        const demoProjectIds = JSON.parse(localStorage.getItem('demoProjectIds') || '[]')
+        demoProjectIds.push(projectId)
+        localStorage.setItem('demoProjectIds', JSON.stringify(demoProjectIds))
+        
+        console.log('演示项目创建成功:', projectId)
+
+        // 2. 创建楼层 (3-5层)
+        const floors = []
+        const floorCount = Math.floor(Math.random() * 3) + 3 // 3-5层
+        for (let i = 1; i <= floorCount; i++) {
+          const floorRes = await api.floor.createFloor(projectId, {
+            name: `${i}F`,
+            level: i,
+            height: 3000,
+            description: `主体结构 ${i}层`
+          })
+          const floorData = floorRes.data || floorRes
+          floors.push(floorData)
+        }
+        console.log('演示楼层创建成功:', floors.length)
+
+        // 3. 创建预埋件
+        const partsToCreate = []
+        const statuses = ['pending', 'installed', 'inspected', 'rejected', 'completed']
+        const types = ['Givey', 'Bracket', 'Anchor', 'Plate']
+        const models = ['M10', 'M12', 'M16', 'M20']
+        
+        for (const floor of floors) {
+          const count = Math.floor(Math.random() * 10) + 10 // 10-20个
+          
+          for (let j = 0; j < count; j++) {
+            const status = statuses[Math.floor(Math.random() * statuses.length)]
+            const type = types[Math.floor(Math.random() * types.length)]
+            const model = models[Math.floor(Math.random() * models.length)]
+            
+            // 简单的网格布局位置
+            const x = (j % 5) * 2000 + Math.floor(Math.random() * 500)
+            const y = Math.floor(j / 5) * 2000 + Math.floor(Math.random() * 500)
+            
+            // 生成逼真的历史记录
+            const statusHistory = []
+            let installationDate = null
+            let inspectionDate = null
+            let inspectorId = null
+            
+            // 基础时间点
+            const baseDate = new Date()
+            const installTime = new Date(baseDate.getTime() - Math.random() * 7 * 24 * 60 * 60 * 1000 - 3 * 24 * 60 * 60 * 1000) // 3-10天前
+            const inspectTime = new Date(installTime.getTime() + Math.random() * 2 * 24 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000) // 安装后1-3天验收
+            
+            if (status === 'installed' || status === 'inspected' || status === 'completed' || status === 'rejected') {
+              statusHistory.push({
+                status: 'installed',
+                timestamp: installTime,
+                updatedBy: '张强 (施工员)', // 模拟安装人员
+                note: '按图纸定位安装完成，位置偏差<5mm'
+              })
+              installationDate = installTime
+            }
+            
+            if (status === 'inspected' || status === 'completed') {
+              statusHistory.push({
+                status: 'inspected',
+                timestamp: inspectTime,
+                updatedBy: '李明 (质检员)', // 模拟质检人员
+                note: '验收合格，符合设计要求规范'
+              })
+              inspectionDate = inspectTime
+              inspectorId = 'demo-inspector-001'
+            }
+            
+            if (status === 'rejected') {
+              statusHistory.push({
+                status: 'rejected',
+                timestamp: inspectTime,
+                updatedBy: '李明 (质检员)', // 模拟质检人员
+                note: '验收不合格：位置偏移过大，请重新调整'
+              })
+              inspectionDate = inspectTime
+              inspectorId = 'demo-inspector-001'
+            }
+            
+            if (status === 'completed') {
+               // 模拟归档
+               const completeTime = new Date(inspectTime.getTime() + 24 * 60 * 60 * 1000)
+               statusHistory.push({
+                status: 'completed',
+                timestamp: completeTime,
+                updatedBy: '系统自动归档',
+                note: '流程结束，自动归档'
+              })
+            }
+
+            const part = {
+              projectId: projectId,
+              floorId: floor.id,
+              floorName: floor.name,
+              name: `${type}-${model}-${randomString(4)}`,
+              code: `EP-${floor.level}-${String(j + 1).padStart(3, '0')}`,
+              type: type,
+              modelNumber: model,
+              status: status,
+              location: `Grid ${String.fromCharCode(65 + (j % 5))}-${Math.floor(j / 5) + 1}`,
+              description: '结构预埋件',
+              coordinates: JSON.stringify({ x, y, z: floor.level * 3000 }),
+              coordinates2D: JSON.stringify({ x, y }),
+              statusHistory: statusHistory,
+              installationDate: installationDate,
+              inspectionDate: inspectionDate,
+              inspectorId: inspectorId
+            }
+            partsToCreate.push(part)
+          }
+        }
+        
+        if (partsToCreate.length > 0) {
+          await api.embeddedPart.batchCreateEmbeddedParts(partsToCreate)
+          console.log(`成功创建 ${partsToCreate.length} 个演示预埋件`)
+        }
+
+        ElMessage.success(`成功生成演示数据：${randomName}`)
+        
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('生成演示数据失败:', error)
+          ElMessage.error('生成演示数据失败: ' + (error.response?.data?.message || error.message))
+        }
+      } finally {
+        generatingDemoData.value = false
+      }
+    }
+
+    // 清除模拟数据
+    const clearDemoData = async () => {
+      try {
+        const demoProjectIds = JSON.parse(localStorage.getItem('demoProjectIds') || '[]')
+        
+        if (demoProjectIds.length === 0) {
+          ElMessage.info('本地记录中没有需要清除的演示数据')
+          return
+        }
+
+        await ElMessageBox.confirm(
+          `检测到 ${demoProjectIds.length} 个由您生成的演示项目。确定要清除吗？这将永久删除这些数据。`,
+          '清除演示数据',
+          {
+            confirmButtonText: '清除',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        clearingDemoData.value = true
+        
+        // 逐个删除
+        let deletedCount = 0
+        const remainingIds = [...demoProjectIds]
+        
+        for (const id of demoProjectIds) {
+          try {
+            await api.project.deleteProject(id)
+            deletedCount++
+            // 从列表中移除
+            const index = remainingIds.indexOf(id)
+            if (index > -1) remainingIds.splice(index, 1)
+          } catch (err) {
+            console.warn(`删除项目 ${id} 失败:`, err)
+            if (err.response && err.response.status === 404) {
+               // 如果404，说明已经没了，也算删除成功，移除ID
+               const index = remainingIds.indexOf(id)
+               if (index > -1) remainingIds.splice(index, 1)
+            }
+          }
+        }
+        
+        // 更新localStorage
+        localStorage.setItem('demoProjectIds', JSON.stringify(remainingIds))
+        
+        if (deletedCount > 0) {
+           ElMessage.success(`成功清除 ${deletedCount} 个演示项目`)
+        } else {
+           ElMessage.info('未清除任何项目（可能已被删除）')
+        }
+        
+      } catch (error) {
+         if (error !== 'cancel') {
+          console.error('清除演示数据失败:', error)
+          ElMessage.error('清除演示数据失败')
+        }
+      } finally {
+        clearingDemoData.value = false
+      }
+    }
     
     // 初始化设置
     onMounted(() => {
@@ -273,7 +534,11 @@ export default {
       saveSettings,
       resetSettings,
       manualBackup,
-      exportData
+      exportData,
+      generatingDemoData,
+      clearingDemoData,
+      generateDemoData,
+      clearDemoData
     }
   }
 }

@@ -48,7 +48,7 @@ const authenticate = (req: Request, _res: Response, next: NextFunction): void =>
 
   // 将用户信息附加到请求对象
   (req as any).user = {
-    userId: decoded.userId,
+    id: decoded.userId,
     role: decoded.role
   };
 

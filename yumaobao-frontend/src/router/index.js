@@ -90,19 +90,14 @@ const router = createRouter({
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  // 检查是否需要认证
   if (to.matched.some(record => record.meta.requiresAuth)) {
-    // 从本地存储获取用户信息
-    const user = JSON.parse(localStorage.getItem('user'))
-    
+    const user = JSON.parse(localStorage.getItem('user')) 
     if (!user) {
-      // 未登录，重定向到登录页
       next({
         path: '/login',
         query: { redirect: to.fullPath }
       })
     } else {
-      // 检查是否需要特定角色
       if (to.matched.some(record => record.meta.requiresRole)) {
         const requiresRole = to.meta.requiresRole
         if (requiresRole.includes(user.role)) {

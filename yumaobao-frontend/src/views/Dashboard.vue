@@ -280,15 +280,13 @@
     >
       <el-form :model="reportForm" label-width="100px">
         <el-form-item label="报告类型">
-          <el-select v-model="reportForm.type" placeholder="选择报告类型">
-            <el-option label="项目进度报告" value="project_progress" />
-            <el-option label="预埋件状态报告" value="embedded_part_status" />
-            <el-option label="验收统计报告" value="inspection_stats" />
-            <el-option label="月度总结报告" value="monthly_summary" />
+          <el-select v-model="reportForm.reportType" placeholder="选择报告类型">
+            <el-option label="项目进度报告" value="project-progress" />
+            <el-option label="预埋件状态报告" value="embedded-parts-status" />
           </el-select>
         </el-form-item>
         <el-form-item label="项目">
-          <el-select v-model="reportForm.projectId" placeholder="选择项目" clearable>
+          <el-select v-model="reportForm.selectedProject" placeholder="选择项目" clearable>
             <el-option
               v-for="project in projects"
               :key="project.id"
@@ -339,6 +337,7 @@ import {
   View
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
 import api from '../api/index'
 
 export default {
@@ -386,7 +385,9 @@ export default {
       totalParts: 0,
       installedParts: 0,
       inspectedParts: 0,
-      pendingParts: 0
+      pendingParts: 0,
+      rejectedParts: 0,
+      completedParts: 0
     })
 
     // 最近项目和扫描记录
@@ -574,9 +575,9 @@ export default {
         legend: {
           orient: 'vertical',
           left: 'left',
-          data: ['待安装', '已安装', '已验收', '已完成']
+          data: ['待安装', '已安装', '已验收', '已拒绝', '已完成']
         },
-        color: ['#409eff', '#67c23a', '#e6a23c', '#909399'],
+        color: ['#fa541c', '#1890ff', '#52c41a', '#f5222d', '#909399'],
         series: [
           {
             name: '状态分布',
@@ -587,7 +588,8 @@ export default {
               { value: embeddedPartStats.pendingParts, name: '待安装' },
               { value: embeddedPartStats.installedParts, name: '已安装' },
               { value: embeddedPartStats.inspectedParts, name: '已验收' },
-              { value: embeddedPartStats.totalParts - embeddedPartStats.pendingParts - embeddedPartStats.installedParts - embeddedPartStats.inspectedParts, name: '已完成' }
+              { value: embeddedPartStats.rejectedParts, name: '已拒绝' },
+              { value: embeddedPartStats.completedParts, name: '已完成' }
             ],
             emphasis: {
               itemStyle: {
@@ -602,6 +604,23 @@ export default {
 
       statusChart.setOption(option)
     }
+
+    // 更新安装进度趋势图
+    // 数据存储
+    const dashboardData = ref([])
+
+    // 监听图表类型变化
+    watch(statusChartType, () => {
+      if (statusChart) {
+        updateStatusChart()
+      }
+    })
+
+    watch(trendChartType, () => {
+      if (trendChart) {
+        updateTrendChart()
+      }
+    })
 
     // 更新安装进度趋势图
     const updateTrendChart = () => {
@@ -624,7 +643,7 @@ export default {
       }, {})
       
       // 从预埋件数据中提取状态变更记录
-      const allEmbeddedParts = embeddedPartStore.embeddedParts
+      const allEmbeddedParts = dashboardData.value || []
       allEmbeddedParts.forEach(part => {
         if (part.statusHistory) {
           part.statusHistory.forEach(record => {
@@ -648,6 +667,10 @@ export default {
         installedData.push(dailyData[date].installed)
         inspectedData.push(dailyData[date].inspected)
       })
+
+      // 处理图表类型：ECharts不支持直接的 'area' 类型，需要配置 areaStyle
+      const isArea = trendChartType.value === 'area'
+      const seriesType = isArea ? 'line' : trendChartType.value
 
       const option = {
         tooltip: {
@@ -673,29 +696,26 @@ export default {
         series: [
           {
             name: '安装数量',
-            type: trendChartType.value,
+            type: seriesType,
             data: installedData,
             smooth: true,
-            areaStyle: trendChartType.value === 'area' ? {} : undefined,
-            itemStyle: {
-              color: '#67c23a'
-            }
+            itemStyle: { color: '#1890ff' },
+            ...(isArea ? { areaStyle: { opacity: 0.3 } } : {})
           },
           {
             name: '验收数量',
-            type: trendChartType.value,
+            type: seriesType,
             data: inspectedData,
             smooth: true,
-            areaStyle: trendChartType.value === 'area' ? {} : undefined,
-            itemStyle: {
-              color: '#e6a23c'
-            }
+            itemStyle: { color: '#52c41a' },
+            ...(isArea ? { areaStyle: { opacity: 0.3 } } : {})
           }
         ]
       }
 
-      trendChart.setOption(option)
+      trendChart.setOption(option, true)
     }
+
 
     // 加载数据
     const loadDashboardData = async () => {
@@ -705,21 +725,39 @@ export default {
         // 获取项目数据
         const allProjects = await api.project.getProjects()
         
-        // 获取预埋件数据
-        const allEmbeddedParts = await api.embeddedPart.getEmbeddedParts()
-        // 确保allEmbeddedParts始终是数组
-        const embeddedPartsArray = Array.isArray(allEmbeddedParts) ? allEmbeddedParts : []
+        // 获取预埋件数据 - 获取更多数据以确保统计准确
+        const response = await api.embeddedPart.getEmbeddedParts({ limit: 10000 })
+        
+        // 处理API响应格式 - 后端可能返回 {total, data} 或直接返回数组
+        let embeddedPartsArray = []
+        let totalPartsCount = 0
+        
+        if (response && typeof response === 'object') {
+          if (Array.isArray(response.data)) {
+            embeddedPartsArray = response.data
+            totalPartsCount = response.total || embeddedPartsArray.length
+          } else if (Array.isArray(response)) {
+            embeddedPartsArray = response
+            totalPartsCount = embeddedPartsArray.length
+          }
+        }
+        
+        // 更新本地数据引用，供图表使用
+        dashboardData.value = embeddedPartsArray
         
         // 计算项目统计
         projectStats.totalProjects = allProjects.length
-        projectStats.activeProjects = allProjects.filter(p => p.status === 'under_construction').length
+        projectStats.activeProjects = allProjects.filter(p => p.status === 'under_construction' || p.status === 'active').length
         projectStats.completedProjects = allProjects.filter(p => p.status === 'completed').length
         
         // 计算预埋件统计
-        embeddedPartStats.totalParts = embeddedPartsArray.length
+        embeddedPartStats.totalParts = totalPartsCount
         embeddedPartStats.installedParts = embeddedPartsArray.filter(p => p.status === 'installed').length
         embeddedPartStats.inspectedParts = embeddedPartsArray.filter(p => p.status === 'inspected').length
         embeddedPartStats.pendingParts = embeddedPartsArray.filter(p => p.status === 'pending').length
+        // 增加已拒绝和已完成（如果有）的统计，确保数据完整性
+        embeddedPartStats.rejectedParts = embeddedPartsArray.filter(p => p.status === 'rejected').length
+        embeddedPartStats.completedParts = embeddedPartsArray.filter(p => p.status === 'completed').length
         
         // 最近项目（按更新时间排序，取前3个）
         recentProjects.value = [...allProjects]
@@ -734,7 +772,7 @@ export default {
               id: `${part.id}-${record.timestamp}`,
               action: record.status === 'installed' ? 'install' : record.status === 'inspected' ? 'inspect' : 'verify',
               status: 'completed',
-              embeddedPartName: part.identifier || part.id,
+              embeddedPartName: part.name || part.identifier || part.id,
               userName: record.updatedBy || '未知用户',
               scanTime: record.timestamp
             }))
@@ -781,6 +819,12 @@ export default {
     // 提交报告生成
     const submitReport = async () => {
       try {
+        // 验证是否选择了项目
+        if (!reportForm.selectedProject) {
+          ElMessage.warning('请先选择一个项目')
+          return
+        }
+        
         reportLoading.value = true
         
         let reportData = null
@@ -805,22 +849,18 @@ export default {
           })
         }
         
-        if (reportData && reportData.success) {
-          // 生成报告文件
-          for (const format of reportForm.reportFormats) {
-            const fileResponse = await api.report.generateReportFile(reportData.data, format)
-            
-            // 下载报告文件
-            const blob = new Blob([fileResponse], { type: getBlobType(format) })
-            const url = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `Report_${new Date().getTime()}.${getExtension(format)}`
-            document.body.appendChild(a)
-            a.click()
-            document.body.removeChild(a)
-            window.URL.revokeObjectURL(url)
-          }
+        if (reportData && reportData.title) {
+          // 直接下载报告数据为 JSON 文件（临时方案）
+          const jsonString = JSON.stringify(reportData, null, 2)
+          const blob = new Blob([jsonString], { type: 'application/json' })
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `Report_${reportData.title}_${new Date().getTime()}.json`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
           
           ElMessage.success('报告生成成功')
         } else {
@@ -975,37 +1015,75 @@ export default {
   padding: 0;
 }
 
+/* 页面头部 - 建筑风格 */
 .page-header {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--steel-silver);
+  position: relative;
+}
+
+.page-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 120px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
 }
 
 .page-header h2 {
   margin: 0 0 8px 0;
-  font-size: 24px;
-  color: #333;
+  font-size: 26px;
+  color: var(--construction-blue);
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 .page-header p {
   margin: 0;
-  color: #666;
+  color: var(--concrete-gray);
   font-size: 14px;
 }
 
-/* 统计卡片 */
+/* 统计卡片 - 建筑风格 */
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 20px;
+  margin-bottom: 28px;
 }
 
 .stat-card {
   border-radius: 8px;
-  transition: transform 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--steel-silver);
+  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--construction-blue);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--construction-blue-light);
+}
+
+.stat-card:hover::before {
+  opacity: 1;
 }
 
 .stat-content {
@@ -1019,58 +1097,70 @@ export default {
 }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #333;
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--construction-blue);
   margin-bottom: 4px;
+  letter-spacing: -1px;
 }
 
 .stat-label {
   font-size: 14px;
-  color: #666;
+  color: var(--concrete-gray);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
+/* 统计图标 - 建筑行业风格 */
 .stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 28px;
+  position: relative;
 }
 
 .project-icon {
-  background-color: #e6f7ff;
-  color: #1890ff;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: var(--construction-blue);
+  border: 1px solid #93c5fd;
 }
 
 .part-icon {
-  background-color: #fff7e6;
-  color: #fa8c16;
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  color: var(--safety-orange);
+  border: 1px solid #fdba74;
 }
 
 .installed-icon {
-  background-color: #f6ffed;
-  color: #52c41a;
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: var(--complete-green);
+  border: 1px solid #86efac;
 }
 
 .pending-icon {
-  background-color: #fff2e8;
-  color: #fa541c;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: var(--warning-yellow);
+  border: 1px solid #fcd34d;
 }
 
 .inspected-icon {
-  background-color: #f6ffed;
-  color: #73d13d;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #059669;
+  border: 1px solid #6ee7b7;
 }
 
 .completed-icon {
-  background-color: #e6f7ff;
-  color: #4096ff;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  color: #4f46e5;
+  border: 1px solid #a5b4fc;
 }
 
-/* 内容卡片 */
+/* 内容卡片 - 建筑风格 */
 .dashboard-content {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -1079,21 +1169,26 @@ export default {
 
 .content-card {
   border-radius: 8px;
+  border: 1px solid var(--steel-silver);
+  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cement-texture);
 }
 
 .card-header h3 {
   margin: 0;
   font-size: 18px;
-  color: #333;
+  color: var(--construction-blue);
+  font-weight: 600;
 }
 
-/* 最近项目 */
+/* 最近项目 - 建筑风格 */
 .recent-projects {
   display: flex;
   flex-direction: column;
@@ -1102,27 +1197,48 @@ export default {
 
 .project-item {
   padding: 16px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--steel-silver);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
+  position: relative;
+}
+
+.project-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--construction-blue);
+  border-radius: 8px 0 0 8px;
+  opacity: 0;
+  transition: opacity 0.25s ease;
 }
 
 .project-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  border-color: var(--construction-blue-light);
+  box-shadow: var(--shadow-md);
+  transform: translateX(4px);
+}
+
+.project-item:hover::before {
+  opacity: 1;
 }
 
 .project-item h4 {
   margin: 0 0 8px 0;
   font-size: 16px;
-  color: #333;
+  color: var(--construction-blue);
+  font-weight: 600;
 }
 
 .project-description {
   margin: 0 0 12px 0;
   font-size: 14px;
-  color: #666;
+  color: var(--concrete-gray);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -1139,7 +1255,7 @@ export default {
 
 .project-date {
   font-size: 12px;
-  color: #999;
+  color: var(--concrete-light);
 }
 
 /* 最近扫描记录 */
@@ -1148,26 +1264,40 @@ export default {
   overflow-y: auto;
 }
 
-/* 图表区域 */
+/* 图表区域 - 建筑蓝图风格 */
 .charts-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  gap: 24px;
+  margin-bottom: 32px;
 }
 
 .chart-card {
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
   border-radius: 8px;
+  border: 1px solid var(--steel-silver);
+  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
+  position: relative;
   overflow: hidden;
+}
+
+.chart-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
 }
 
 .chart-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--cement-texture);
+  background: linear-gradient(180deg, #ffffff 0%, var(--cement-light) 100%);
 }
 
 .chart-header h3 {

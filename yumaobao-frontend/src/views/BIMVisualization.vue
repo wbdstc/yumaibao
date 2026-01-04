@@ -210,6 +210,7 @@
                 :use-main-thread-draw="false"
                 base-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/"
                 locale="zh"
+                theme="light"
                 @loaded="onDualViewerLoaded"
                 @error="onViewerError"
               />
@@ -337,6 +338,7 @@
           :use-main-thread-draw="false"
           base-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/"
           locale="zh"
+          theme="light"
           @loaded="onViewerLoaded"
           @error="onViewerError"
         />
@@ -2990,6 +2992,13 @@ onUnmounted(() => {
   overflow: hidden;
   background: #fff;
   min-height: 400px;
+  /* 主题隔离：强制使用亮色主题 */
+  color-scheme: light !important;
+}
+
+/* 确保双视图中的CAD viewer使用亮色主题 */
+.full-view-container :deep(*) {
+  color-scheme: light !important;
 }
 
 .full-view-container :deep(.dual-view-canvas-wrapper) {
@@ -3005,6 +3014,12 @@ onUnmounted(() => {
 .full-view-container :deep([class*="cad-viewer"]) {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* 覆盖可能的暗色主题 */
+.full-view-container :deep(.ml-theme-dark) {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
 }
 
 /* 3D全屏视图 */
@@ -3158,6 +3173,20 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* 主题隔离：强制使用亮色主题，防止CAD viewer主题泄露 */
+  color-scheme: light !important;
+  background-color: #ffffff;
+}
+
+/* 确保CAD viewer内部强制使用亮色主题 */
+.cad-viewer-wrapper :deep(*) {
+  color-scheme: light !important;
+}
+
+/* 覆盖CAD viewer可能的暗色主题类 */
+.cad-viewer-wrapper :deep(.ml-theme-dark) {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
 }
 
 .cad-container {

@@ -159,7 +159,7 @@ class IFCConversionService {
         
         console.log(`${logPrefix} 转换命令字符串: ${commandStr}`);
         
-        // 设置超时时间（5分钟）
+
         const timeout = 5 * 60 * 1000;
         
         const childProcess = exec(commandStr, {

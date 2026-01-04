@@ -227,16 +227,32 @@ export default {
   overflow: hidden;
 }
 
-/* 侧边栏 */
+/* 侧边栏 - 建筑工程风格 */
 .sidebar {
   width: 220px;
-  background: linear-gradient(180deg, var(--construction-blue) 0%, #0f1e30 100%);
+  background: linear-gradient(180deg, var(--construction-blue) 0%, var(--construction-blue-dark) 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s ease;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
-  border-right: 1px solid var(--steel-silver);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
+  border-right: 3px solid var(--safety-orange);
+  position: relative;
+}
+
+/* 侧边栏蓝图纹理叠加 */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
 }
 
 .sidebar-collapsed {
@@ -246,8 +262,20 @@ export default {
 .logo {
   padding: 20px;
   text-align: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%);
+  position: relative;
+}
+
+/* logo区域底部装饰线 */
+.logo::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--safety-orange) 50%, transparent 100%);
 }
 
 .logo-container {
@@ -261,9 +289,10 @@ export default {
   color: #fff;
   font-size: 20px;
   font-weight: 700;
-  letter-spacing: 1px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  letter-spacing: 2px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
+  text-transform: uppercase;
 }
 
 /* 图片logo样式 */
@@ -289,36 +318,40 @@ export default {
 .sidebar-menu {
   flex: 1;
   border-right: none;
-  background-color: #1e3a5f;
+  background-color: transparent;
 }
 
 .sidebar-menu :deep(.el-menu-item) {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.85);
   border-left: 3px solid transparent;
-  transition: all 0.3s ease;
-  padding: 12px 16px;
+  transition: all 0.25s ease;
+  padding: 14px 16px;
   font-size: 14px;
+  margin: 2px 8px;
+  border-radius: 4px;
 }
 
 .sidebar-menu :deep(.el-sub-menu__title) {
-  color: #ffffff;
-  transition: all 0.3s ease;
-  padding: 12px 16px;
+  color: rgba(255, 255, 255, 0.9);
+  transition: all 0.25s ease;
+  padding: 14px 16px;
   font-size: 14px;
 }
 
 .sidebar-menu :deep(.el-sub-menu__title:hover) {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
 .sidebar-menu :deep(.el-sub-menu .el-menu) {
-  background-color: #1b3c92;
+  background-color: rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-menu :deep(.el-sub-menu .el-menu-item) {
   color: rgba(255, 255, 255, 0.8);
-  background-color: #1b3c92;
+  background-color: transparent;
+  margin: 2px 8px;
+  border-radius: 4px;
 }
 
 .sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
@@ -334,14 +367,15 @@ export default {
 }
 
 .sidebar-menu :deep(.el-menu-item.is-active) {
-  background-color: rgba(255, 115, 22, 0.2);
+  background: linear-gradient(90deg, rgba(234, 88, 12, 0.25) 0%, rgba(234, 88, 12, 0.1) 100%);
   color: #fff;
   border-left-color: var(--safety-orange);
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.3);
 }
 
 .sidebar-menu :deep(.el-sub-menu .el-menu-item.is-active) {
-  background-color: rgba(255, 115, 22, 0.2);
+  background: linear-gradient(90deg, rgba(234, 88, 12, 0.25) 0%, rgba(234, 88, 12, 0.1) 100%);
   color: #fff;
   border-left-color: var(--safety-orange);
   font-weight: 600;
@@ -363,20 +397,31 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: #f8f9fa;
+  background-color: var(--blueprint-bg);
 }
 
-/* 顶部导航栏 */
+/* 顶部导航栏 - 建筑风格 */
 .top-header {
-  height: 60px;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  height: 64px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--cement-light) 100%);
   border-bottom: 1px solid var(--steel-silver);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
   position: relative;
+}
+
+/* 顶部工程装饰条 */
+.top-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
 }
 
 .top-header::after {
@@ -385,45 +430,50 @@ export default {
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
+  height: 1px;
+  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--steel-silver) 50%, var(--construction-blue) 100%);
 }
 
 .menu-toggle {
   font-size: 24px;
   cursor: pointer;
   color: var(--construction-blue);
-  transition: all 0.3s ease;
-  padding: 8px;
-  border-radius: 4px;
+  transition: all 0.25s ease;
+  padding: 10px;
+  border-radius: 6px;
+  background: transparent;
 }
 
 .menu-toggle:hover {
   color: var(--safety-orange);
-  background-color: rgba(249, 115, 22, 0.1);
+  background-color: rgba(234, 88, 12, 0.08);
+  transform: scale(1.05);
 }
 
 .user-info {
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 4px;
-  transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--steel-silver);
 }
 
 .user-info:hover {
-  background-color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
+  border-color: var(--construction-blue-light);
 }
 
 .user-info span {
-  margin-left: 8px;
+  margin-left: 10px;
   color: var(--construction-blue);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 /* 内容区域 */
@@ -431,7 +481,18 @@ export default {
   flex: 1;
   padding: clamp(16px, 2vw, 24px);
   overflow-y: auto;
-  background-color: #f8f9fa;
+  background-color: var(--blueprint-bg);
+  /* 内容区域蓝图网格 */
+  background-image:
+    linear-gradient(var(--blueprint-line-dark) 1px, transparent 1px),
+    linear-gradient(90deg, var(--blueprint-line-dark) 1px, transparent 1px),
+    linear-gradient(var(--blueprint-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--blueprint-line) 1px, transparent 1px);
+  background-size: 
+    100px 100px,
+    100px 100px,
+    20px 20px,
+    20px 20px;
 }
 
 /* 移动端底部导航栏 - 默认隐藏 */

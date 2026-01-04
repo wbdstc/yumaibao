@@ -22,28 +22,16 @@ const TIMEOUT_CONFIG = {
 // 请求拦截器 - 【已修复】
 api.interceptors.request.use(
   config => {
-    // 直接从 localStorage 读取 token，避免时机问题
     let token = localStorage.getItem('token')
-
-    // 添加更详细的调试日志
-    console.log('请求拦截器：开始处理请求', config.url)
-    console.log('请求拦截器：localStorage中的token', token ? token.substring(0, 20) + '...' : 'null')
-
-    // 确保headers对象存在
     if (!config.headers) {
       config.headers = {}
     }
-
-    // 如果 token 存在，则添加到请求头
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-      console.log('请求拦截器：成功添加 token 到请求头')
-      // 打印完整的请求头（敏感信息已过滤）
       const headersCopy = { ...config.headers }
       if (headersCopy.Authorization) {
         headersCopy.Authorization = headersCopy.Authorization.substring(0, 30) + '...'
       }
-      console.log('请求拦截器：最终请求头', headersCopy)
     } else {
       console.log('请求拦截器：未找到 token，请求可能失败')
     }
