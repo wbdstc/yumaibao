@@ -64,7 +64,7 @@ echo.
 
 :: 3. Start Backend Service
 echo 3. Starting Backend Service...
-cd /d "d:\code\cad-viewer-main\yumaobao-backend"
+cd /d "d:\code\yumaibao\backend"
 start "Backend Service" cmd /k "npm run dev"
 echo    Backend service started at http://localhost:3000
 
@@ -72,7 +72,7 @@ echo.
 
 :: 4. Start Frontend Service
 echo 4. Starting Frontend Service...
-cd /d "d:\code\cad-viewer-main\yumaobao-frontend"
+cd /d "d:\code\yumaibao\frontend"
 start "Frontend Service" cmd /k "npm run dev"
 echo    Frontend service started at http://localhost:5173
 
