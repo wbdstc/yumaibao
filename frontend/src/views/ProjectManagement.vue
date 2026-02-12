@@ -104,6 +104,14 @@
               楼层配置
             </el-button>
             <el-button
+              type="info"
+              size="small"
+              @click.stop="showCoordinateConfigDialog(scope.row)"
+            >
+              <el-icon><Location /></el-icon>
+              坐标配置
+            </el-button>
+            <el-button
               type="danger"
               size="small"
               @click.stop="showDeleteConfirm(scope.row)"
@@ -456,6 +464,25 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 坐标配置对话框 -->
+    <el-dialog
+      v-model="coordinateConfigDialogVisible"
+      title="项目坐标系统配置"
+      width="700px"
+      :close-on-click-modal="false"
+    >
+      <CoordinateConfigPanel
+        v-if="coordinateConfigDialogVisible && selectedProjectForCoordinate"
+        :project-id="selectedProjectForCoordinate.id"
+        @config-saved="onCoordinateConfigSaved"
+      />
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="coordinateConfigDialogVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -464,8 +491,9 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore, useUserStore } from '../stores/index'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, View, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, View, Edit, Delete, Menu, Location } from '@element-plus/icons-vue'
 import api from '../api/index'
+import CoordinateConfigPanel from '../components/CoordinateConfigPanel.vue'
 
 export default {
   name: 'ProjectManagement',
@@ -474,7 +502,10 @@ export default {
     Search,
     View,
     Edit,
-    Delete
+    Delete,
+    Menu,
+    Location,
+    CoordinateConfigPanel
   },
   setup() {
     const router = useRouter()
@@ -911,6 +942,21 @@ export default {
       }
     }
 
+    // 坐标配置相关
+    const coordinateConfigDialogVisible = ref(false)
+    const selectedProjectForCoordinate = ref(null)
+
+    // 显示坐标配置对话框
+    const showCoordinateConfigDialog = (project) => {
+      selectedProjectForCoordinate.value = project
+      coordinateConfigDialogVisible.value = true
+    }
+
+    // 坐标配置保存回调
+    const onCoordinateConfigSaved = (config) => {
+      ElMessage.success('坐标配置已保存')
+    }
+
     onMounted(() => {
       loadProjects()
     })
@@ -957,7 +1003,12 @@ export default {
       handleAddFloor,
       showEditFloorDialog,
       handleEditFloor,
-      showDeleteFloorConfirm
+      showDeleteFloorConfirm,
+      // 坐标配置相关
+      coordinateConfigDialogVisible,
+      selectedProjectForCoordinate,
+      showCoordinateConfigDialog,
+      onCoordinateConfigSaved
     }
   }
 }

@@ -251,6 +251,78 @@ class ProjectController {
       return res.status(500).json({ message: '删除楼层失败', error: String(error) });
     }
   }
+
+  // 坐标配置管理
+  static async getCoordinateConfig(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+      }
+
+      // 如果没有配置，返回默认配置
+      const config = project.coordinateConfig || (Project.constructor as any).createDefaultCoordinateConfig?.() || {
+        isConfigured: false,
+        cadConfig: {
+          originX: 0,
+          originY: 0,
+          rotation: 0,
+          unit: 'mm',
+          unitToMeter: 0.001,
+          yAxisUp: true
+        },
+        modelConfig: {
+          offsetX: 0,
+          offsetY: 0,
+          offsetZ: 0,
+          scale: 1,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0
+        }
+      };
+
+      return res.status(200).json(config);
+    } catch (error) {
+      console.error('获取坐标配置失败:', error);
+      return res.status(500).json({ message: '获取坐标配置失败', error: String(error) });
+    }
+  }
+
+  static async updateCoordinateConfig(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+      const userId = (req as any).user?.id;
+      const config = req.body;
+
+      // 验证项目是否存在
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+      }
+
+      // 验证配置数据
+      if (!config.cadConfig || !config.modelConfig) {
+        return res.status(400).json({ message: '坐标配置数据不完整' });
+      }
+
+      const updatedProject = await Project.updateCoordinateConfig(projectId, config, userId);
+
+      if (!updatedProject) {
+        return res.status(500).json({ message: '更新坐标配置失败' });
+      }
+
+      return res.status(200).json({
+        message: '坐标配置更新成功',
+        data: updatedProject.coordinateConfig
+      });
+    } catch (error) {
+      console.error('更新坐标配置失败:', error);
+      return res.status(500).json({ message: '更新坐标配置失败', error: String(error) });
+    }
+  }
 }
 
 export default ProjectController;

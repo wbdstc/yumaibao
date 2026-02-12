@@ -9,7 +9,6 @@ import EmbeddedPartManagement from '../views/EmbeddedPartManagement.vue'
 import QRCodeScan from '../views/QRCodeScan.vue'
 import Profile from '../views/Profile.vue'
 import SystemSettings from '../views/SystemSettings.vue'
-import UploadTest from '../views/UploadTest.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ProjectStatistics from '../views/ProjectStatistics.vue'
 import ModelManagement from '../views/ModelManagement.vue'
@@ -31,7 +30,7 @@ const routes = [
     component: Layout,
     meta: { requiresAuth: true },
     children: [
-      {        path: '',        name: 'Dashboard',        component: Dashboard,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }      },
+      { path: '', name: 'Dashboard', component: Dashboard, meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] } },
       {
         path: 'projects',
         name: 'ProjectManagement',
@@ -50,8 +49,8 @@ const routes = [
         component: ModelManagement,
         meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }
       },
-      {        path: 'embedded-parts',        name: 'EmbeddedPartManagement',        component: EmbeddedPartManagement,        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] }      },
-      {        path: 'scan',        name: 'QRCodeScan',        component: QRCodeScan,        meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'] }      },
+      { path: 'embedded-parts', name: 'EmbeddedPartManagement', component: EmbeddedPartManagement, meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer'] } },
+      { path: 'scan', name: 'QRCodeScan', component: QRCodeScan, meta: { requiresRole: ['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'] } },
       {
         path: 'profile',
         name: 'Profile',
@@ -61,11 +60,6 @@ const routes = [
         path: 'settings',
         name: 'SystemSettings',
         component: SystemSettings
-      },
-      {
-        path: 'upload-test',
-        name: 'UploadTest',
-        component: UploadTest
       },
       {
         path: 'users',
@@ -83,6 +77,7 @@ const routes = [
   }
 ]
 
+
 const router = createRouter({
   history: createWebHistory(),
   routes
@@ -91,7 +86,7 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach((to, from, next) => {
   if (to.matched.some(record => record.meta.requiresAuth)) {
-    const user = JSON.parse(localStorage.getItem('user')) 
+    const user = JSON.parse(localStorage.getItem('user'))
     if (!user) {
       next({
         path: '/login',

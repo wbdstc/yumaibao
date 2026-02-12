@@ -64,38 +64,77 @@
 
     <!-- 扫描结果 -->
     <el-card class="result-card" v-if="scanResult">
-      <h3>扫描结果</h3>
-      <el-divider></el-divider>
+      <template #header>
+        <div class="result-header">
+          <h3>
+            <el-icon><CircleCheck /></el-icon>
+            扫描成功
+          </h3>
+          <el-tag :type="getStatusType(scanResult.status)" size="large">
+            {{ getStatusText(scanResult.status) }}
+          </el-tag>
+        </div>
+      </template>
+      
       <div class="result-content">
-        <el-descriptions border column="2" :column="2">
-          <el-descriptions-item label="名称">{{ scanResult.name }}</el-descriptions-item>
-          <el-descriptions-item label="编号">{{ scanResult.code }}</el-descriptions-item>
-          <el-descriptions-item label="型号">{{ scanResult.modelNumber }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ scanResult.type }}</el-descriptions-item>
-          <el-descriptions-item label="项目">{{ scanResult.projectId }}</el-descriptions-item>
-          <el-descriptions-item label="楼层">{{ scanResult.floorId }}</el-descriptions-item>
-          <el-descriptions-item label="位置">{{ scanResult.location }}</el-descriptions-item>
-          <el-descriptions-item label="当前状态">
-            <el-tag
-              :type="
-                scanResult.status === 'pending' ? 'info' :
-                scanResult.status === 'installed' ? 'success' :
-                scanResult.status === 'inspected' ? 'warning' : 'success'
-              "
-            >
-              {{ scanResult.status === 'pending' ? '待安装' :
-                scanResult.status === 'installed' ? '已安装' :
-                scanResult.status === 'inspected' ? '已验收' : '已完成' }}
-            </el-tag>
+        <!-- 基本信息 -->
+        <el-descriptions border :column="2" class="part-info">
+          <el-descriptions-item label="名称" :span="2">
+            <span class="highlight-text">{{ scanResult.name }}</span>
           </el-descriptions-item>
+          <el-descriptions-item label="编号">{{ scanResult.code }}</el-descriptions-item>
+          <el-descriptions-item label="型号">{{ scanResult.modelNumber || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ scanResult.type }}</el-descriptions-item>
+          <el-descriptions-item label="楼层">{{ getFloorName(scanResult.floorId) }}</el-descriptions-item>
+          <el-descriptions-item label="位置" :span="2">{{ scanResult.location || '未指定' }}</el-descriptions-item>
         </el-descriptions>
 
-        <div class="result-actions" v-if="scanResult.status !== 'completed'">
+        <!-- 坐标信息（如果有） -->
+        <div class="coordinate-info" v-if="hasCoordinates(scanResult)">
+          <el-divider content-position="left">
+            <el-icon><Location /></el-icon>
+            位置坐标
+          </el-divider>
+          <div class="coord-grid">
+            <div class="coord-item" v-if="scanResult.coordinates2D">
+              <span class="coord-label">图纸坐标</span>
+              <span class="coord-value">
+                X: {{ formatCoord(scanResult.coordinates2D?.x) }}, 
+                Y: {{ formatCoord(scanResult.coordinates2D?.y) }}
+              </span>
+            </div>
+            <div class="coord-item" v-if="scanResult.axisDistanceX || scanResult.axisDistanceY">
+              <span class="coord-label">轴线距离</span>
+              <span class="coord-value">
+                <span v-if="scanResult.axisDistanceX" class="axis-x">
+                  距{{ scanResult.nearestAxisX || 'X轴' }}: {{ scanResult.axisDistanceX }}mm
+                </span>
+                <span v-if="scanResult.axisDistanceY" class="axis-y">
+                  距{{ scanResult.nearestAxisY || 'Y轴' }}: {{ scanResult.axisDistanceY }}mm
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="result-actions">
+          <!-- 主要操作 -->
+          <el-button
+            type="primary"
+            size="large"
+            @click="viewInBIM"
+            :icon="View"
+          >
+            在BIM中查看
+          </el-button>
+          
+          <!-- 状态操作 -->
           <el-button
             type="success"
             size="large"
             @click="confirmInstallation"
-            v-if="scanResult.status === 'pending'"
+            v-if="scanResult.status === 'pending' && canInstall"
           >
             确认安装
           </el-button>
@@ -103,14 +142,16 @@
             type="warning"
             size="large"
             @click="confirmInspection"
-            v-if="scanResult.status === 'installed'"
+            v-if="scanResult.status === 'installed' && canInspect"
           >
             确认验收
           </el-button>
+          
+          <!-- 继续扫描 -->
           <el-button
-            type="primary"
             size="large"
             @click="resetScan"
+            :icon="RefreshRight"
           >
             继续扫描
           </el-button>
@@ -176,7 +217,7 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import { Camera, VideoPlay, VideoPause, Picture, RefreshRight } from '@element-plus/icons-vue'
+import { Camera, VideoPlay, VideoPause, Picture, RefreshRight, CircleCheck, Location, View } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 import api from '../api/index.js'
 import { useUserStore } from '../stores/index.js'
@@ -216,6 +257,69 @@ const resolutionOptions = {
   high: { width: { ideal: 1920 }, height: { ideal: 1080 } },
   medium: { width: { ideal: 1280 }, height: { ideal: 720 } },
   low: { width: { ideal: 640 }, height: { ideal: 480 } }
+}
+
+// 辅助函数：状态文本
+const getStatusText = (status) => {
+  const statusMap = {
+    pending: '待安装',
+    installed: '已安装',
+    inspected: '已验收',
+    completed: '已完成'
+  }
+  return statusMap[status] || status
+}
+
+// 辅助函数：状态类型
+const getStatusType = (status) => {
+  const typeMap = {
+    pending: 'info',
+    installed: 'success',
+    inspected: 'warning',
+    completed: 'success'
+  }
+  return typeMap[status] || 'info'
+}
+
+// 辅助函数：获取楼层名称
+const getFloorName = (floorId) => {
+  // 简化处理，后续可从缓存或API获取
+  return floorId || '未指定'
+}
+
+// 辅助函数：检查是否有坐标
+const hasCoordinates = (part) => {
+  return part?.coordinates2D || part?.axisDistanceX || part?.axisDistanceY
+}
+
+// 辅助函数：格式化坐标
+const formatCoord = (value) => {
+  if (value === undefined || value === null) return '-'
+  return typeof value === 'number' ? value.toFixed(2) : value
+}
+
+// 权限检查
+const canInstall = computed(() => {
+  const role = userStore.userRole
+  return ['installer', 'projectEngineer', 'projectManager', 'admin'].includes(role)
+})
+
+const canInspect = computed(() => {
+  const role = userStore.userRole
+  return ['qualityInspector', 'projectManager', 'admin'].includes(role)
+})
+
+// 在BIM中查看
+const viewInBIM = () => {
+  if (scanResult.value?.id) {
+    router.push({
+      path: '/bim',
+      query: { 
+        partId: scanResult.value.id,
+        projectId: scanResult.value.projectId 
+      }
+    })
+  }
 }
 
 // 开始/停止扫描
@@ -818,15 +922,82 @@ onBeforeUnmount(() => {
   margin-bottom: 20px;
 }
 
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.result-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #67c23a;
+}
+
 .result-content {
-  padding: 16px 0;
+  padding: 0;
+}
+
+.part-info {
+  margin-bottom: 16px;
+}
+
+.highlight-text {
+  font-weight: 600;
+  font-size: 16px;
+  color: #303133;
+}
+
+/* 坐标信息 */
+.coordinate-info {
+  margin: 16px 0;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.coord-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.coord-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.coord-label {
+  font-size: 13px;
+  color: #909399;
+  min-width: 70px;
+}
+
+.coord-value {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 14px;
+  color: #303133;
+}
+
+.axis-x {
+  color: #e74c3c;
+  margin-right: 12px;
+}
+
+.axis-y {
+  color: #2ecc71;
 }
 
 .result-actions {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 20px;
   justify-content: center;
+  padding-top: 16px;
+  border-top: 1px solid #ebeef5;
 }
 
 .notes-form {

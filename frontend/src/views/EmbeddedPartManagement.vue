@@ -99,6 +99,8 @@
                 <el-option label="已安装" value="installed" />
                 <el-option label="已验收" value="inspected" />
                 <el-option label="已完成" value="completed" />
+                <el-option label="超时未安装" value="overdue_install" />
+                <el-option label="超时未验收" value="overdue_inspect" />
               </el-select>
             </el-form-item>
           </div>
@@ -272,35 +274,21 @@
         <el-form-item label="位置" prop="location">
           <el-input v-model="embeddedPartForm.location" placeholder="请输入位置" />
         </el-form-item>
-        <el-divider content-position="left">2D坐标信息 (可选)</el-divider>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="坐标X" prop="coordinateX">
-              <el-input-number
-                v-model="embeddedPartForm.coordinateX"
-                placeholder="输入X坐标"
-                :precision="2"
-                :step="10"
-                controls-position="right"
-                style="width: 100%"
-              />
-              <div class="field-tip">CAD图纸X坐标 (mm)</div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="坐标Y" prop="coordinateY">
-              <el-input-number
-                v-model="embeddedPartForm.coordinateY"
-                placeholder="输入Y坐标"
-                :precision="2"
-                :step="10"
-                controls-position="right"
-                style="width: 100%"
-              />
-              <div class="field-tip">CAD图纸Y坐标 (mm)</div>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        
+        <!-- 坐标输入面板 -->
+        <el-collapse v-model="coordinateCollapseActive">
+          <el-collapse-item title="坐标信息（可选）" name="coordinates">
+            <CoordinateInputPanel
+              v-if="dialogVisible"
+              ref="coordinateInputRef"
+              :initial-coordinates="getInitialCoordinates()"
+              :floors="floors"
+              :selected-floor-id="embeddedPartForm.floorId"
+              :compact="true"
+              @coordinates-change="handleCoordinatesChange"
+            />
+          </el-collapse-item>
+        </el-collapse>
         <el-form-item label="状态" prop="status">
           <el-select v-model="embeddedPartForm.status" placeholder="选择状态" style="width: 100%">
             <el-option label="待安装" value="pending" />
@@ -357,9 +345,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/index.js'
 import * as XLSX from 'xlsx'
 import { useUserStore } from '../stores/index.js'
+import CoordinateInputPanel from '../components/CoordinateInputPanel.vue'
 
 export default {
   name: 'EmbeddedPartManagement',
+  components: {
+    CoordinateInputPanel
+  },
   setup() {
     // 数据
     const userStore = useUserStore()
@@ -438,6 +430,34 @@ export default {
     const qrcodeDialogVisible = ref(false)
     const qrcodeUrl = ref('')
     const selectedEmbeddedPart = ref(null)
+
+    // 坐标输入相关
+    const coordinateCollapseActive = ref([])
+    const coordinateInputRef = ref(null)
+    const currentCoordinates = ref(null)
+
+    // 获取初始坐标
+    const getInitialCoordinates = () => {
+      if (embeddedPartForm.value.coordinates2D) {
+        return {
+          x: embeddedPartForm.value.coordinates2D.x || 0,
+          y: embeddedPartForm.value.coordinates2D.y || 0,
+          z: embeddedPartForm.value.coordinates?.z || 0,
+          unit: 'mm'
+        }
+      }
+      return null
+    }
+
+    // 处理坐标变化
+    const handleCoordinatesChange = (coords) => {
+      currentCoordinates.value = coords
+      // 同时更新表单中的坐标字段
+      if (coords) {
+        embeddedPartForm.value.coordinateX = coords.x
+        embeddedPartForm.value.coordinateY = coords.y
+      }
+    }
 
     // 批量选择
     const selectedRows = ref([])
@@ -552,8 +572,23 @@ export default {
       return floor ? floor.name : '未知楼层'
     }
 
+    const OVERDUE_MS = 24 * 60 * 60 * 1000
+    
+    const isOverdueInstall = (row) => {
+      const now = new Date()
+      return row.status === 'pending' && row.createdAt && (now - new Date(row.createdAt)) > OVERDUE_MS
+    }
+    
+    const isOverdueInspect = (row) => {
+      const now = new Date()
+      return row.status === 'installed' && row.updatedAt && (now - new Date(row.updatedAt)) > OVERDUE_MS
+    }
+    
     const getRowClassName = ({ row }) => {
-      // 根据状态设置行样式
+      // 超时行优先显示
+      if (isOverdueInstall(row) || isOverdueInspect(row)) {
+        return 'overdue-row'
+      }
       if (row.status === 'rejected') {
         return 'warning-row'
       } else if (row.status === 'completed') {
@@ -611,8 +646,8 @@ export default {
           console.log('搜索楼层ID:', searchParams.floorId)
         }
         
-        // 可选：状态
-        if (searchForm.status && searchForm.status.trim() !== '') {
+        // 可选：状态（超时筛选由前端处理）
+        if (searchForm.status && searchForm.status.trim() !== '' && !searchForm.status.startsWith('overdue_')) {
           searchParams.status = searchForm.status
           console.log('搜索状态:', searchParams.status)
         }
@@ -652,6 +687,15 @@ export default {
         }
         
         embeddedParts.value = responseData
+        
+        // 前端超时筛选
+        if (searchForm.status === 'overdue_install') {
+          embeddedParts.value = responseData.filter(p => isOverdueInstall(p))
+          pagination.total = embeddedParts.value.length
+        } else if (searchForm.status === 'overdue_inspect') {
+          embeddedParts.value = responseData.filter(p => isOverdueInspect(p))
+          pagination.total = embeddedParts.value.length
+        }
         console.log('处理后的数据:', embeddedParts.value)
         console.log('分页信息:', { total: pagination.total, currentPage: pagination.currentPage, pages: pagination.pages })
         console.log('=== 搜索结束 ===')
@@ -1124,7 +1168,14 @@ export default {
       handleQRCodeDialogClosed,
       handleSelectionChange,
       handleBatchDelete,
-      selectedRows
+      selectedRows,
+      handleFloorChange,
+      // 坐标输入相关
+      coordinateCollapseActive,
+      coordinateInputRef,
+      currentCoordinates,
+      getInitialCoordinates,
+      handleCoordinatesChange
     }
   }
 }
@@ -1241,6 +1292,11 @@ export default {
 
 :deep(.el-table .success-row) {
   background-color: #f0f9ff;
+}
+
+:deep(.el-table .overdue-row) {
+  background-color: #fff1f0;
+  border-left: 3px solid #ff4d4f;
 }
 
 /* 字段提示文字样式 */

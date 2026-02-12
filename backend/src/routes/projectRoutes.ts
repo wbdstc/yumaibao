@@ -18,4 +18,8 @@ router.post('/:projectId/floors', authenticate, authorize('projectManager', 'adm
 router.put('/:projectId/floors/:floorId', authenticate, authorize('projectManager', 'admin'), ProjectController.updateFloor);
 router.delete('/:projectId/floors/:floorId', authenticate, authorize('projectManager', 'admin'), ProjectController.deleteFloor);
 
+// 坐标配置路由
+router.get('/:projectId/coordinate-config', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), ProjectController.getCoordinateConfig);
+router.put('/:projectId/coordinate-config', authenticate, authorize('projectManager', 'admin'), ProjectController.updateCoordinateConfig);
+
 export default router;

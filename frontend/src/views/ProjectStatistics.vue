@@ -53,6 +53,14 @@
             <div class="stat-number">{{ rejectedParts }}</div>
             <div class="stat-label">已拒收</div>
           </div>
+          <div class="stat-card overdue-card">
+            <div class="stat-number overdue-number">{{ overdueInstallParts }}</div>
+            <div class="stat-label">超时未安装</div>
+          </div>
+          <div class="stat-card overdue-card">
+            <div class="stat-number overdue-number">{{ overdueInspectParts }}</div>
+            <div class="stat-label">超时未验收</div>
+          </div>
           <div class="stat-card">
             <div class="stat-number">{{ completionRate }}%</div>
             <div class="stat-label">完成率</div>
@@ -69,6 +77,18 @@
           <el-table-column prop="installed" label="已安装" />
           <el-table-column prop="inspected" label="已验收" />
           <el-table-column prop="rejected" label="已拒收" />
+          <el-table-column label="超时未安装">
+            <template #default="scope">
+              <el-tag v-if="scope.row.overdueInstall > 0" type="danger" size="small">{{ scope.row.overdueInstall }}</el-tag>
+              <span v-else>0</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="超时未验收">
+            <template #default="scope">
+              <el-tag v-if="scope.row.overdueInspect > 0" type="warning" size="small">{{ scope.row.overdueInspect }}</el-tag>
+              <span v-else>0</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="completionRate" label="完成率" />
         </el-table>
       </div>
@@ -191,6 +211,22 @@ export default {
     const rejectedParts = computed(() => 
       embeddedParts.value.filter(part => part.status === 'rejected').length
     )
+    
+    // 超时统计
+    const OVERDUE_MS = 24 * 60 * 60 * 1000
+    const overdueInstallParts = computed(() => {
+      const now = new Date()
+      return embeddedParts.value.filter(part => 
+        part.status === 'pending' && part.createdAt && (now - new Date(part.createdAt)) > OVERDUE_MS
+      ).length
+    })
+    const overdueInspectParts = computed(() => {
+      const now = new Date()
+      return embeddedParts.value.filter(part => 
+        part.status === 'installed' && part.updatedAt && (now - new Date(part.updatedAt)) > OVERDUE_MS
+      ).length
+    })
+    
     const completionRate = computed(() => {
       if (totalParts.value === 0) return 0
       return Math.round((inspectedParts.value / totalParts.value) * 100)
@@ -198,6 +234,7 @@ export default {
 
     // 楼层统计数据
     const floorStatistics = computed(() => {
+        const now = new Date()
       return floors.value.map(floor => {
         const floorParts = embeddedParts.value.filter(part => 
           part.floorId === floor.id
@@ -216,6 +253,8 @@ export default {
           installed: floorInstalled,
           inspected: floorInspected,
           rejected: floorRejected,
+          overdueInstall: floorParts.filter(part => part.status === 'pending' && part.createdAt && (now - new Date(part.createdAt)) > OVERDUE_MS).length,
+          overdueInspect: floorParts.filter(part => part.status === 'installed' && part.updatedAt && (now - new Date(part.updatedAt)) > OVERDUE_MS).length,
           completionRate: `${floorCompletionRate}%`
         }
       })
@@ -254,6 +293,8 @@ export default {
       installedParts,
       inspectedParts,
       rejectedParts,
+      overdueInstallParts,
+      overdueInspectParts,
       completionRate,
       floorStatistics,
       handleProjectChange,
@@ -354,5 +395,14 @@ export default {
   padding: 60px 20px;
   text-align: center;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.overdue-card {
+  background-color: #fff5f5;
+  border-color: #fca5a5;
+}
+
+.overdue-number {
+  color: #dc2626 !important;
 }
 </style>

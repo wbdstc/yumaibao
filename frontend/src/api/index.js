@@ -224,6 +224,13 @@ export default {
     },
     deleteProject(id) {
       return api.delete(`/projects/${id}`)
+    },
+    // 坐标配置
+    getCoordinateConfig(projectId) {
+      return api.get(`/projects/${projectId}/coordinate-config`)
+    },
+    updateCoordinateConfig(projectId, config) {
+      return api.put(`/projects/${projectId}/coordinate-config`, config)
     }
   },
   // 楼层相关API

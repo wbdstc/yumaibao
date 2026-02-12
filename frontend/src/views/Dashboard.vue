@@ -86,6 +86,30 @@
         </div>
       </el-card>
 
+      <el-card class="stat-card warning-card" shadow="hover">
+        <div class="stat-content">
+          <div class="stat-info">
+            <div class="stat-value warning-value">{{ embeddedPartStats.overdueInstall }}</div>
+            <div class="stat-label">超时未安装</div>
+          </div>
+          <div class="stat-icon overdue-icon">
+            <el-icon><Warning /></el-icon>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="stat-card warning-card" shadow="hover">
+        <div class="stat-content">
+          <div class="stat-info">
+            <div class="stat-value warning-value">{{ embeddedPartStats.overdueInspect }}</div>
+            <div class="stat-label">超时未验收</div>
+          </div>
+          <div class="stat-icon overdue-icon">
+            <el-icon><Bell /></el-icon>
+          </div>
+        </div>
+      </el-card>
+
       <el-card class="stat-card construction-card" shadow="hover">
         <div class="stat-content">
           <div class="stat-info">
@@ -240,6 +264,18 @@
           <el-table-column prop="totalEmbeddedParts" label="预埋件总数" width="120" />
           <el-table-column prop="installedCount" label="已安装" width="100" />
           <el-table-column prop="inspectedCount" label="已验收" width="100" />
+          <el-table-column prop="overdueInstallCount" label="超时未安装" width="120">
+            <template #default="scope">
+              <el-tag v-if="scope.row.overdueInstallCount > 0" type="danger" size="small">{{ scope.row.overdueInstallCount }}</el-tag>
+              <span v-else>0</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="overdueInspectCount" label="超时未验收" width="120">
+            <template #default="scope">
+              <el-tag v-if="scope.row.overdueInspectCount > 0" type="warning" size="small">{{ scope.row.overdueInspectCount }}</el-tag>
+              <span v-else>0</span>
+            </template>
+          </el-table-column>
           <el-table-column label="完成率" width="120">
             <template #default="scope">
               <el-progress
@@ -334,10 +370,12 @@ import {
   Finished,
   DocumentCopy,
   List,
-  View
+  View,
+  Warning,
+  Bell
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import api from '../api/index'
 
 export default {
@@ -352,7 +390,9 @@ export default {
     Finished,
     DocumentCopy,
     List,
-    View
+    View,
+    Warning,
+    Bell
   },
   setup() {
     const router = useRouter()
@@ -387,8 +427,13 @@ export default {
       inspectedParts: 0,
       pendingParts: 0,
       rejectedParts: 0,
-      completedParts: 0
+      completedParts: 0,
+      overdueInstall: 0,
+      overdueInspect: 0
     })
+
+    // 超时判定常量（24小时）
+    const OVERDUE_MS = 24 * 60 * 60 * 1000
 
     // 最近项目和扫描记录
     const recentProjects = ref([])
@@ -575,9 +620,9 @@ export default {
         legend: {
           orient: 'vertical',
           left: 'left',
-          data: ['待安装', '已安装', '已验收', '已拒绝', '已完成']
+          data: ['待安装', '已安装', '已验收', '已拒绝', '已完成', '超时未安装', '超时未验收']
         },
-        color: ['#fa541c', '#1890ff', '#52c41a', '#f5222d', '#909399'],
+        color: ['#fa541c', '#1890ff', '#52c41a', '#f5222d', '#909399', '#ff4d4f', '#faad14'],
         series: [
           {
             name: '状态分布',
@@ -589,7 +634,9 @@ export default {
               { value: embeddedPartStats.installedParts, name: '已安装' },
               { value: embeddedPartStats.inspectedParts, name: '已验收' },
               { value: embeddedPartStats.rejectedParts, name: '已拒绝' },
-              { value: embeddedPartStats.completedParts, name: '已完成' }
+              { value: embeddedPartStats.completedParts, name: '已完成' },
+              { value: embeddedPartStats.overdueInstall, name: '超时未安装' },
+              { value: embeddedPartStats.overdueInspect, name: '超时未验收' }
             ],
             emphasis: {
               itemStyle: {
@@ -755,9 +802,17 @@ export default {
         embeddedPartStats.installedParts = embeddedPartsArray.filter(p => p.status === 'installed').length
         embeddedPartStats.inspectedParts = embeddedPartsArray.filter(p => p.status === 'inspected').length
         embeddedPartStats.pendingParts = embeddedPartsArray.filter(p => p.status === 'pending').length
-        // 增加已拒绝和已完成（如果有）的统计，确保数据完整性
         embeddedPartStats.rejectedParts = embeddedPartsArray.filter(p => p.status === 'rejected').length
         embeddedPartStats.completedParts = embeddedPartsArray.filter(p => p.status === 'completed').length
+        
+        // 超时统计
+        const now = new Date()
+        embeddedPartStats.overdueInstall = embeddedPartsArray.filter(p => 
+          p.status === 'pending' && p.createdAt && (now - new Date(p.createdAt)) > OVERDUE_MS
+        ).length
+        embeddedPartStats.overdueInspect = embeddedPartsArray.filter(p => 
+          p.status === 'installed' && p.updatedAt && (now - new Date(p.updatedAt)) > OVERDUE_MS
+        ).length
         
         // 最近项目（按更新时间排序，取前3个）
         recentProjects.value = [...allProjects]
@@ -788,12 +843,36 @@ export default {
             code: project.code || `PRJ-${project.id.slice(-6).toUpperCase()}`,
             totalEmbeddedParts: projectParts.length,
             installedCount: projectParts.filter(p => p.status === 'installed').length,
-            inspectedCount: projectParts.filter(p => p.status === 'inspected').length
+            inspectedCount: projectParts.filter(p => p.status === 'inspected').length,
+            overdueInstallCount: projectParts.filter(p => p.status === 'pending' && p.createdAt && (now - new Date(p.createdAt)) > OVERDUE_MS).length,
+            overdueInspectCount: projectParts.filter(p => p.status === 'installed' && p.updatedAt && (now - new Date(p.updatedAt)) > OVERDUE_MS).length
           }
         })
         
         loading.value = false
         initCharts()
+        
+        // 超时自动提醒
+        if (embeddedPartStats.overdueInstall > 0) {
+          ElNotification({
+            title: '⚠️ 超时未安装提醒',
+            message: `有 ${embeddedPartStats.overdueInstall} 个预埋件超过24小时未安装，请及时处理！`,
+            type: 'error',
+            duration: 10000,
+            position: 'top-right'
+          })
+        }
+        if (embeddedPartStats.overdueInspect > 0) {
+          setTimeout(() => {
+            ElNotification({
+              title: '⚠️ 超时未验收提醒',
+              message: `有 ${embeddedPartStats.overdueInspect} 个预埋件超过24小时未验收，请质检人员及时处理！`,
+              type: 'warning',
+              duration: 10000,
+              position: 'top-right'
+            })
+          }, 1500)
+        }
       } catch (error) {
         console.error('加载仪表盘数据失败:', error)
         loading.value = false
@@ -1158,6 +1237,27 @@ export default {
   background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
   color: #4f46e5;
   border: 1px solid #a5b4fc;
+}
+
+/* 超时警告卡片 */
+.warning-card {
+  border-color: #fca5a5 !important;
+  background: linear-gradient(135deg, #fff5f5 0%, #fee2e2 100%) !important;
+}
+
+.warning-card::before {
+  background: #ef4444 !important;
+  opacity: 1 !important;
+}
+
+.warning-value {
+  color: #dc2626 !important;
+}
+
+.overdue-icon {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #dc2626;
+  border: 1px solid #fca5a5;
 }
 
 /* 内容卡片 - 建筑风格 */

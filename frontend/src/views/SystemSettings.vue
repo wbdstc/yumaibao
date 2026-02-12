@@ -11,16 +11,16 @@
         <el-form label-width="150px" class="settings-form">
           <el-form-item label="主题模式">
             <el-radio-group v-model="settings.theme">
-              <el-radio-button label="light">亮色</el-radio-button>
-              <el-radio-button label="dark">暗色</el-radio-button>
-              <el-radio-button label="auto">跟随系统</el-radio-button>
+              <el-radio-button value="light">亮色</el-radio-button>
+              <el-radio-button value="dark">暗色</el-radio-button>
+              <el-radio-button value="auto">跟随系统</el-radio-button>
             </el-radio-group>
           </el-form-item>
           
           <el-form-item label="侧边栏风格">
             <el-radio-group v-model="settings.sidebarStyle">
-              <el-radio-button label="expanded">展开</el-radio-button>
-              <el-radio-button label="collapsed">折叠</el-radio-button>
+              <el-radio-button value="expanded">展开</el-radio-button>
+              <el-radio-button value="collapsed">折叠</el-radio-button>
             </el-radio-group>
           </el-form-item>
           
