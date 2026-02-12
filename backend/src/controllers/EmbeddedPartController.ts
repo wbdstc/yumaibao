@@ -709,10 +709,27 @@ class EmbeddedPartController {
         return res.status(404).json({ message: '预埋件不存在' });
       }
 
-      const updateData = {
+      // 处理照片上传
+      const photoUrls: string[] = [];
+      const files = (req as any).files as Express.Multer.File[] | undefined;
+      if (files && files.length > 0) {
+        for (const file of files) {
+          try {
+            const result = await uploadFileToMinIO(MINIO_BUCKETS.UPLOADS, file, `installation/${id}/${Date.now()}-${file.originalname}`);
+            photoUrls.push(result.url);
+          } catch (uploadError) {
+            console.error('照片上传失败:', uploadError);
+          }
+        }
+      }
+
+      const updateData: any = {
         status: 'installed' as 'pending' | 'installed' | 'inspected' | 'rejected',
         installationDate: new Date()
       };
+      if (photoUrls.length > 0) {
+        updateData.installationPhotos = photoUrls;
+      }
 
       const updatedPart = await EmbeddedPart.update(id, updateData);
       return res.status(200).json({ message: '安装确认成功', data: updatedPart });
@@ -738,12 +755,29 @@ class EmbeddedPartController {
         return res.status(404).json({ message: '预埋件不存在' });
       }
 
-      const updateData = {
+      // 处理照片上传
+      const photoUrls: string[] = [];
+      const files = (req as any).files as Express.Multer.File[] | undefined;
+      if (files && files.length > 0) {
+        for (const file of files) {
+          try {
+            const result = await uploadFileToMinIO(MINIO_BUCKETS.UPLOADS, file, `inspection/${id}/${Date.now()}-${file.originalname}`);
+            photoUrls.push(result.url);
+          } catch (uploadError) {
+            console.error('照片上传失败:', uploadError);
+          }
+        }
+      }
+
+      const updateData: any = {
         status: status as 'pending' | 'installed' | 'inspected' | 'rejected',
         inspectorId: userId,
         inspectionDate: new Date(),
         notes
       };
+      if (photoUrls.length > 0) {
+        updateData.inspectionPhotos = photoUrls;
+      }
 
       const updatedPart = await EmbeddedPart.update(id, updateData);
       return res.status(200).json({ message: '验收确认成功', data: updatedPart });

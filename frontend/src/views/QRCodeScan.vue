@@ -133,18 +133,18 @@
           <el-button
             type="success"
             size="large"
-            @click="confirmInstallation"
+            @click="showPhotoDialog('install')"
             v-if="scanResult.status === 'pending' && canInstall"
           >
-            确认安装
+            📷 拍照确认安装
           </el-button>
           <el-button
             type="warning"
             size="large"
-            @click="confirmInspection"
+            @click="showPhotoDialog('inspect')"
             v-if="scanResult.status === 'installed' && canInspect"
           >
-            确认验收
+            📷 拍照确认验收
           </el-button>
           
           <!-- 继续扫描 -->
@@ -157,23 +157,102 @@
           </el-button>
         </div>
 
-        <!-- 备注输入 -->
-        <el-form v-if="showNotesInput" :model="notesForm" class="notes-form">
+        <!-- 已有照片展示 -->
+        <div class="photo-gallery" v-if="scanResult.installationPhotos && scanResult.installationPhotos.length > 0">
+          <el-divider content-position="left">安装打卡照片</el-divider>
+          <div class="photo-list">
+            <el-image
+              v-for="(photo, index) in scanResult.installationPhotos"
+              :key="'install-' + index"
+              :src="photo"
+              :preview-src-list="scanResult.installationPhotos"
+              :initial-index="index"
+              fit="cover"
+              class="photo-thumb"
+            />
+          </div>
+        </div>
+        <div class="photo-gallery" v-if="scanResult.inspectionPhotos && scanResult.inspectionPhotos.length > 0">
+          <el-divider content-position="left">验收打卡照片</el-divider>
+          <div class="photo-list">
+            <el-image
+              v-for="(photo, index) in scanResult.inspectionPhotos"
+              :key="'inspect-' + index"
+              :src="photo"
+              :preview-src-list="scanResult.inspectionPhotos"
+              :initial-index="index"
+              fit="cover"
+              class="photo-thumb"
+            />
+          </div>
+        </div>
+
+        <!-- 备注输入（已移入对话框） -->
+      </div>
+    </el-card>
+
+    <!-- 拍照打卡对话框 -->
+    <el-dialog
+      v-model="photoDialogVisible"
+      :title="photoDialogType === 'install' ? '📷 安装拍照打卡' : '📷 验收拍照打卡'"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div class="photo-dialog-content">
+        <el-alert
+          :title="photoDialogType === 'install' ? '请拍摄安装现场照片作为打卡凭证' : '请拍摄验收现场照片作为打卡凭证'"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px"
+        />
+        <el-upload
+          v-model:file-list="photoFileList"
+          list-type="picture-card"
+          :auto-upload="false"
+          accept="image/*"
+          :limit="5"
+          :on-exceed="handlePhotoExceed"
+          :on-preview="handlePhotoPreview"
+          :on-remove="handlePhotoRemove"
+        >
+          <el-icon style="font-size: 28px; color: #909399"><Plus /></el-icon>
+          <template #tip>
+            <div class="el-upload__tip">最多上传5张照片，支持拍照或从相册选择</div>
+          </template>
+        </el-upload>
+
+        <!-- 验收时增加备注 -->
+        <div v-if="photoDialogType === 'inspect'" style="margin-top: 16px">
           <el-form-item label="备注">
             <el-input
-              v-model="notesForm.notes"
+              v-model="photoDialogNotes"
               type="textarea"
-              placeholder="请输入备注信息"
+              placeholder="请输入验收备注信息"
               rows="3"
             />
           </el-form-item>
-          <div class="notes-actions">
-            <el-button @click="showNotesInput = false">取消</el-button>
-            <el-button type="primary" @click="submitNotes">提交</el-button>
-          </div>
-        </el-form>
+        </div>
       </div>
-    </el-card>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="photoDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="submitPhotoConfirm"
+            :disabled="photoFileList.length === 0"
+            :loading="photoSubmitting"
+          >
+            {{ photoFileList.length === 0 ? '请先拍照' : '确认提交' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 照片预览 -->
+    <el-dialog v-model="previewDialogVisible" title="照片预览" width="60%">
+      <img :src="previewImageUrl" style="width: 100%" />
+    </el-dialog>
 
     <!-- 操作历史 -->
     <el-card class="history-card">
@@ -217,7 +296,7 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import { Camera, VideoPlay, VideoPause, Picture, RefreshRight, CircleCheck, Location, View } from '@element-plus/icons-vue'
+import { Camera, VideoPlay, VideoPause, Picture, RefreshRight, CircleCheck, Location, View, Plus } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 import api from '../api/index.js'
 import { useUserStore } from '../stores/index.js'
@@ -237,6 +316,15 @@ const showNotesInput = ref(false)
 const notesForm = ref({ notes: '' })
 const lastScanTime = ref(0)
 const scanDelay = ref(200) // 扫描间隔(ms)，优化扫描性能
+
+// 拍照打卡相关
+const photoDialogVisible = ref(false)
+const photoDialogType = ref('install') // 'install' or 'inspect'
+const photoFileList = ref([])
+const photoDialogNotes = ref('')
+const photoSubmitting = ref(false)
+const previewDialogVisible = ref(false)
+const previewImageUrl = ref('')
 
 // 扫描历史
 const scanHistory = ref([])
@@ -676,49 +764,66 @@ const binarizeImageData = (imageData) => {
   return data
 }
 
-// 确认安装
-const confirmInstallation = async () => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要确认安装预埋件：${scanResult.value.name} (${scanResult.value.code}) 吗？`,
-      '确认安装',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+// 打开拍照打卡对话框
+const showPhotoDialog = (type) => {
+  photoDialogType.value = type
+  photoFileList.value = []
+  photoDialogNotes.value = ''
+  photoDialogVisible.value = true
+}
 
-    // 调用API确认安装
-    await api.mobile.installEmbeddedPart(scanResult.value.id)
-    scanResult.value.status = 'installed'
-    ElMessage.success('安装确认成功')
-    addToHistory('success', '安装确认', `已确认安装：${scanResult.value.name} (${scanResult.value.code})`)
-  } catch (error) {
-    if (error === 'cancel') return
-    console.error('安装确认失败:', error)
-    ElMessage.error('安装确认失败: ' + (error.response?.data?.message || '未知错误'))
+// 照片数量超限
+const handlePhotoExceed = () => {
+  ElMessage.warning('最多只能上传5张照片')
+}
+
+// 照片预览
+const handlePhotoPreview = (file) => {
+  previewImageUrl.value = file.url
+  previewDialogVisible.value = true
+}
+
+// 照片移除
+const handlePhotoRemove = () => {
+  // file-list 自动更新
+}
+
+// 提交拍照打卡确认
+const submitPhotoConfirm = async () => {
+  if (photoFileList.value.length === 0) {
+    ElMessage.warning('请至少上传1张照片')
+    return
   }
-}
 
-// 确认验收
-const confirmInspection = () => {
-  showNotesInput.value = true
-}
-
-// 提交备注
-const submitNotes = async () => {
+  photoSubmitting.value = true
   try {
-    // 调用API确认验收
-    await api.mobile.inspectEmbeddedPart(scanResult.value.id, { notes: notesForm.value.notes })
-    scanResult.value.status = 'inspected'
-    showNotesInput.value = false
-    notesForm.value.notes = ''
-    ElMessage.success('验收确认成功')
-    addToHistory('success', '验收确认', `已确认验收：${scanResult.value.name} (${scanResult.value.code})`)
+    // 提取原始文件对象
+    const photos = photoFileList.value.map(f => f.raw)
+
+    if (photoDialogType.value === 'install') {
+      // 安装确认
+      await api.mobile.installEmbeddedPart(scanResult.value.id, photos)
+      scanResult.value.status = 'installed'
+      ElMessage.success('安装确认成功，照片已上传')
+      addToHistory('success', '安装打卡', `已确认安装：${scanResult.value.name} (${scanResult.value.code})，上传${photos.length}张照片`)
+    } else {
+      // 验收确认
+      await api.mobile.inspectEmbeddedPart(
+        scanResult.value.id,
+        { notes: photoDialogNotes.value, status: 'inspected' },
+        photos
+      )
+      scanResult.value.status = 'inspected'
+      ElMessage.success('验收确认成功，照片已上传')
+      addToHistory('success', '验收打卡', `已确认验收：${scanResult.value.name} (${scanResult.value.code})，上传${photos.length}张照片`)
+    }
+
+    photoDialogVisible.value = false
   } catch (error) {
-    console.error('验收确认失败:', error)
-    ElMessage.error('验收确认失败: ' + (error.response?.data?.message || '未知错误'))
+    console.error('拍照确认失败:', error)
+    ElMessage.error('操作失败: ' + (error.response?.data?.message || '未知错误'))
+  } finally {
+    photoSubmitting.value = false
   }
 }
 
@@ -1040,6 +1145,38 @@ onBeforeUnmount(() => {
 .history-description {
   color: #606266;
   font-size: 14px;
+}
+
+/* 照片展示 */
+.photo-gallery {
+  margin-top: 16px;
+}
+
+.photo-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.photo-thumb {
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+  cursor: pointer;
+}
+
+.photo-thumb:hover {
+  border-color: #409eff;
+}
+
+/* 拍照对话框 */
+.photo-dialog-content {
+  padding: 0 8px;
+}
+
+.dialog-footer {
+  text-align: right;
 }
 </style>
 

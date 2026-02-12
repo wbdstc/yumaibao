@@ -336,11 +336,25 @@ export default {
     scanQRCode(data) {
       return api.post('/mobile/scan-qrcode', data)
     },
-    installEmbeddedPart(id) {
-      return api.post(`/mobile/embedded-parts/${id}/install`, {})
+    installEmbeddedPart(id, photos = []) {
+      const formData = new FormData()
+      if (photos && photos.length > 0) {
+        photos.forEach(f => formData.append('photos', f))
+      }
+      return api.post(`/mobile/embedded-parts/${id}/install`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
     },
-    inspectEmbeddedPart(id, data) {
-      return api.post(`/mobile/embedded-parts/${id}/inspect`, data)
+    inspectEmbeddedPart(id, data = {}, photos = []) {
+      const formData = new FormData()
+      if (data.notes) formData.append('notes', data.notes)
+      if (data.status) formData.append('status', data.status)
+      if (photos && photos.length > 0) {
+        photos.forEach(f => formData.append('photos', f))
+      }
+      return api.post(`/mobile/embedded-parts/${id}/inspect`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
     },
     getMobileProjects() {
       return api.get('/mobile/projects')

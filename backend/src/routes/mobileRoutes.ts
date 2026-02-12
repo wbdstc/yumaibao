@@ -3,6 +3,10 @@ import EmbeddedPartController from '../controllers/EmbeddedPartController';
 import authenticate from '../middleware/auth';
 import EmbeddedPart from '../models/EmbeddedPart';
 import Project from '../models/Project';
+import multer from 'multer';
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // 扩展Express Request接口以包含user属性
 declare module 'express-serve-static-core' {
@@ -37,10 +41,10 @@ router.post('/scan-qrcode', authenticate, async (req, res) => {
 });
 
 // 安装确认
-router.post('/embedded-parts/:id/install', authenticate, EmbeddedPartController.confirmInstallation);
+router.post('/embedded-parts/:id/install', authenticate, upload.array('photos', 5), EmbeddedPartController.confirmInstallation);
 
 // 验收确认
-router.post('/embedded-parts/:id/inspect', authenticate, EmbeddedPartController.confirmInspection);
+router.post('/embedded-parts/:id/inspect', authenticate, upload.array('photos', 5), EmbeddedPartController.confirmInspection);
 
 // 获取项目列表（移动端显示）
 router.get('/projects', authenticate, async (req, res) => {

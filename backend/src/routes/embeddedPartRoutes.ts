@@ -29,8 +29,8 @@ router.get('/project/:projectId/floor/:floorId', authenticate, EmbeddedPartContr
 // 二维码相关
 router.get('/:id/qrcode', authenticate, EmbeddedPartController.generateQRCode);
 router.put('/:id/scan-status', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), EmbeddedPartController.updateScanStatus);
-router.post('/:id/install', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'installer'), EmbeddedPartController.confirmInstallation);
-router.post('/:id/inspect', authenticate, authorize('projectManager', 'admin', 'qualityInspector'), EmbeddedPartController.confirmInspection);
+router.post('/:id/install', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'installer'), upload.array('photos', 5), EmbeddedPartController.confirmInstallation);
+router.post('/:id/inspect', authenticate, authorize('projectManager', 'admin', 'qualityInspector'), upload.array('photos', 5), EmbeddedPartController.confirmInspection);
 
 // 状态统计
 router.get('/project/:projectId/stats', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), EmbeddedPartController.getStatusStats);

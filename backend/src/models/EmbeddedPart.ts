@@ -19,8 +19,10 @@ export interface EmbeddedPartAttributes {
   qrCodeUrl: string;
   status: 'pending' | 'installed' | 'inspected' | 'rejected' | 'completed';
   installationDate?: Date;
+  installationPhotos?: string[];
   inspectorId?: string;
   inspectionDate?: Date;
+  inspectionPhotos?: string[];
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -42,8 +44,10 @@ export interface EmbeddedPartCreationAttributes {
   qrCodeUrl: string;
   status?: 'pending' | 'installed' | 'inspected' | 'rejected' | 'completed';
   installationDate?: Date;
+  installationPhotos?: string[];
   inspectorId?: string;
   inspectionDate?: Date;
+  inspectionPhotos?: string[];
   notes?: string;
 }
 
