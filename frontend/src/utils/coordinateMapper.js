@@ -247,9 +247,29 @@ export class CoordinateMapper {
      * @param {Object} newConfig - 新的配置对象
      */
     updateConfig(newConfig) {
-        this.config = {
-            ...this.config,
-            ...newConfig
+        // 检查是否是双视图对齐传入的参数（含 scale/offsetX/offsetY）
+        if (newConfig.scale !== undefined || newConfig.offsetX !== undefined) {
+            // 将对齐参数正确映射到 alignment 结构
+            if (newConfig.rotation !== undefined) {
+                this.config.alignment.rotation = newConfig.rotation
+            }
+            this.config.alignment.basePoint3D = {
+                x: newConfig.offsetX ?? this.config.alignment.basePoint3D.x,
+                y: this.config.alignment.basePoint3D.y,
+                z: newConfig.offsetY ?? this.config.alignment.basePoint3D.z
+            }
+            if (newConfig.scale !== undefined) {
+                // 对齐计算出的 scale = 3D距离/2D距离，已包含单位转换
+                // conversionFactor 的含义是 "1个CAD单位 = 1/conversionFactor 个3D单位"
+                // 所以 conversionFactor = 1 / scale
+                this.config.units.conversionFactor = 1 / newConfig.scale
+            }
+        } else {
+            // 普通配置更新（楼层等）
+            this.config = {
+                ...this.config,
+                ...newConfig
+            }
         }
         // 清空缓存，因为配置已改变
         this.clearCache()

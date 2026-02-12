@@ -110,6 +110,13 @@
     <div class="page-content">
       <!-- 模型显示区域 -->
       <div class="model-container">
+        <!-- 坐标标记模式提示条 -->
+        <div v-if="isMarkingPosition" class="marking-mode-banner">
+          <el-icon><MapLocation /></el-icon>
+          <span>正在为 <strong>{{ markingPart?.name }}</strong> 标记位置 — 请在2D图纸上点击目标位置</span>
+          <el-button size="small" type="danger" plain @click="cancelMarking">取消</el-button>
+        </div>
+
         <!-- 模型视图切换 -->
         <div class="view-switcher">
           <el-radio-group v-model="currentView" size="small">
@@ -132,10 +139,12 @@
           :model="selectedModel"
           :embedded-parts="embeddedPartsWithCoords"
           :show-axis-overlay="true"
+          :class="{ 'marking-cursor': isMarkingPosition }"
           @viewer-loaded="onCadViewerLoaded"
           @viewer-error="onViewerError"
           @axis-configured="onAxisConfigured"
           @part-click="handlePartSelect"
+          @canvas-click="onCanvasClick"
         />
 
         <!-- 3D BIM视图 - 使用新组件 -->
@@ -189,6 +198,7 @@
         @part-highlight="handlePartHighlight"
         @status-change="handleStatusChange"
         @refresh-3d="refreshEmbeddedPartsIn3D"
+        @mark-position="handleMarkPosition"
       />
     </div>
 
@@ -244,7 +254,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Refresh, Menu, Camera, Switch, Check, Select } from '@element-plus/icons-vue'
+import { Document, Refresh, Menu, Camera, Switch, Check, Select, MapLocation } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/index.js'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../api/index.js'
@@ -288,6 +298,8 @@ const isMobile = ref(false)
 const mobileDrawerVisible = ref(false)
 const isThreeJsInitialized = ref(false)
 const selectedPart = ref<any>(null)  // 当前选中的预埋件
+const isMarkingPosition = ref(false) // 是否处于坐标标记模式
+const markingPart = ref<any>(null)   // 正在标记的预埋件
 
 // 坐标转换器
 let coordinateMapper: CoordinateMapper | null = null
@@ -450,6 +462,11 @@ const handlePartHighlight = (part: any) => {
   console.log('高亮预埋件:', part.name)
   selectedPart.value = part  // 保存选中的预埋件
   
+  // 在2D视图中定位
+  if (currentView.value === '2d' && cadViewer2DRef.value && part.coordinates2D) {
+    cadViewer2DRef.value.focusOnCoordinate(part.coordinates2D.x, part.coordinates2D.y)
+  }
+  
   // 在3D视图中高亮
   if (currentView.value === '3d' && bimViewer3DRef.value) {
     bimViewer3DRef.value.highlightPart(part)
@@ -581,6 +598,64 @@ const onAxisConfigured = (config: any) => {
   console.log('轴线配置完成:', config)
 }
 
+// 处理「在图纸上标记位置」
+const handleMarkPosition = (part: any) => {
+  markingPart.value = part
+  isMarkingPosition.value = true
+  // 自动切换到2D视图
+  if (currentView.value !== '2d') {
+    // 找到2D模型
+    const model2d = models.value.find(m => m.type === '2d')
+    if (model2d) {
+      selectedModel.value = model2d
+      currentView.value = '2d'
+    } else {
+      ElMessage.warning('没有可用的2D模型，请先上传DXF图纸')
+      cancelMarking()
+      return
+    }
+  }
+  ElMessage.info({ message: `请在图纸上点击 ${part.name} 的位置`, duration: 3000 })
+}
+
+// 取消标记模式
+const cancelMarking = () => {
+  isMarkingPosition.value = false
+  markingPart.value = null
+}
+
+// 画布点击（标记模式下保存坐标）
+const onCanvasClick = async (coord: { x: number; y: number }) => {
+  if (!isMarkingPosition.value || !markingPart.value) return
+  
+  const part = markingPart.value
+  const coordinates2D = { x: coord.x, y: coord.y }
+  
+  try {
+    // 调用API保存坐标
+    await api.embeddedPart.updateEmbeddedPart(part.id, { coordinates2D })
+    
+    // 更新本地数据
+    const idx = embeddedParts.value.findIndex(p => p.id === part.id)
+    if (idx !== -1) {
+      embeddedParts.value[idx].coordinates2D = coordinates2D
+    }
+    
+    ElMessage.success(`已为 ${part.name} 设置坐标 (${coord.x.toFixed(1)}, ${coord.y.toFixed(1)})`)
+    
+    // 退出标记模式
+    cancelMarking()
+    
+    // 刷新2D视图中的预埋件标记
+    nextTick(() => {
+      cadViewer2DRef.value?.refresh()
+    })
+  } catch (error) {
+    console.error('保存坐标失败:', error)
+    ElMessage.error('保存坐标失败，请重试')
+  }
+}
+
 const onAlignmentComplete = (params: any) => {
   console.log('对齐完成:', params)
   
@@ -597,6 +672,11 @@ const onAlignmentComplete = (params: any) => {
   // 返回3D视图
   currentView.value = '3d'
   ElMessage.success('对齐参数已保存')
+  
+  // 对齐完成后刷新预埋件的3D位置
+  nextTick(() => {
+    bimViewer3DRef.value?.refreshEmbeddedParts()
+  })
 }
 
 const onAlignmentCancel = () => {
@@ -631,6 +711,27 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 坐标标记模式 */
+.marking-mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+  color: white;
+  font-size: 14px;
+  z-index: 60;
+  flex-shrink: 0;
+}
+
+.marking-mode-banner strong {
+  font-weight: 700;
+}
+
+.marking-cursor :deep(canvas) {
+  cursor: crosshair !important;
+}
+
 .bim-visualization {
   width: 100%;
   height: 100vh;

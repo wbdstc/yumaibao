@@ -24,6 +24,7 @@
         @error="onViewerError"
         @part-click="onPartClick"
         @axis-detected="onAxisDetected"
+        @canvas-click="onCanvasClick"
       />
       
       <!-- 无文件提示 -->
@@ -101,6 +102,7 @@ const emit = defineEmits<{
   'viewer-error': [error: Error]
   'axis-configured': [config: any]
   'part-click': [part: EmbeddedPart]
+  'canvas-click': [coord: { x: number; y: number }]
 }>()
 
 // 模板引用
@@ -237,6 +239,13 @@ const onAxisDetected = (data: any) => {
 }
 
 /**
+ * 画布点击（转发DXF世界坐标）
+ */
+const onCanvasClick = (coord: { x: number; y: number }) => {
+  emit('canvas-click', coord)
+}
+
+/**
  * 获取世界坐标（供外部调用）
  */
 const getWorldCoordinates = (screenX: number, screenY: number) => {
@@ -267,7 +276,8 @@ defineExpose({
   getDxfViewerRef: () => dxfViewerRef.value,
   zoomIn: () => dxfViewerRef.value?.zoomIn?.(),
   zoomOut: () => dxfViewerRef.value?.zoomOut?.(),
-  fitToView: () => dxfViewerRef.value?.fitToView?.()
+  fitToView: () => dxfViewerRef.value?.fitToView?.(),
+  focusOnCoordinate: (x: number, y: number) => dxfViewerRef.value?.focusOnCoordinate?.(x, y)
 })
 </script>
 

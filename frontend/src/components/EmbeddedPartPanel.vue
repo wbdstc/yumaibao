@@ -105,10 +105,26 @@
           </el-descriptions-item>
           <el-descriptions-item label="所属项目">{{ getProjectName(selectedPart.projectId) }}</el-descriptions-item>
           <el-descriptions-item label="所属楼层">{{ getFloorName(selectedPart.floorId) }}</el-descriptions-item>
+          <el-descriptions-item label="2D坐标">
+            <template v-if="selectedPart.coordinates2D">
+              <span class="coord-value">X: {{ selectedPart.coordinates2D.x.toFixed(1) }}, Y: {{ selectedPart.coordinates2D.y.toFixed(1) }}</span>
+            </template>
+            <template v-else>
+              <el-tag type="danger" size="small">未设置</el-tag>
+            </template>
+          </el-descriptions-item>
           <el-descriptions-item label="备注">{{ selectedPart.notes || selectedPart.description || '-' }}</el-descriptions-item>
         </el-descriptions>
         
         <div class="dialog-actions-area" style="margin-top: 20px; text-align: center;">
+          <el-button 
+            type="info" 
+            @click="handleMarkPosition"
+            icon="MapLocation"
+          >
+            在图纸上标记位置
+          </el-button>
+          
           <el-button 
             type="warning" 
             v-if="selectedPart.status === 'pending' && canConfirmInstallation"
@@ -160,7 +176,7 @@
 <script setup lang="ts">
 import { ref, computed, type PropType } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, RefreshRight, Search } from '@element-plus/icons-vue'
+import { Document, RefreshRight, Search, MapLocation } from '@element-plus/icons-vue'
 
 /**
  * 预埋件接口定义
@@ -240,6 +256,7 @@ const emit = defineEmits<{
   'part-highlight': [part: EmbeddedPart]
   'status-change': [partId: string, status: string, notes?: string]
   'refresh-3d': []
+  'mark-position': [part: EmbeddedPart]
 }>()
 
 // 状态
@@ -334,6 +351,13 @@ const handlePartClick = (part: EmbeddedPart) => {
 // 刷新3D显示
 const handleRefresh3D = () => {
   emit('refresh-3d')
+}
+
+// 标记位置
+const handleMarkPosition = () => {
+  if (!selectedPart.value) return
+  detailsDialogVisible.value = false
+  emit('mark-position', selectedPart.value)
 }
 
 // 确认安装

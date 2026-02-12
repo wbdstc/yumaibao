@@ -98,7 +98,8 @@ const emit = defineEmits([
   'loaded',
   'error',
   'part-click',
-  'axis-detected'
+  'axis-detected',
+  'canvas-click'
 ])
 
 // DOM Refs
@@ -176,7 +177,7 @@ const initThreeJs = () => {
   
   // 场景
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0xffffff)
+  scene.background = new THREE.Color(0x000000)
   
   // 正交相机 - 增大far值以支持大图纸
   const aspect = container.clientWidth / container.clientHeight || 1
@@ -1845,6 +1846,79 @@ const resetView = () => {
   fitToView()
 }
 
+// 定位到指定坐标（原始图纸坐标）
+const focusOnCoordinate = (rawX, rawY) => {
+  if (!camera || !controls || !containerRef.value) {
+    console.warn('focusOnCoordinate: 组件未准备好')
+    return
+  }
+
+  // 将原始坐标转为归一化坐标
+  const offsetX = worldOffset.x || 0
+  const offsetY = worldOffset.y || 0
+  const scale = worldOffset.scale || 1
+  const nx = (rawX - offsetX) * scale
+  const ny = (rawY - offsetY) * scale
+
+  console.log('📍 定位到坐标:', { rawX, rawY, nx, ny })
+
+  // 计算视口大小：图纸总范围的 20%，让目标放大显示
+  const viewWidth = Math.abs(viewDims.max.x - viewDims.min.x) || 2000
+  const viewHeight = Math.abs(viewDims.max.y - viewDims.min.y) || 2000
+  const zoomSize = Math.min(viewWidth, viewHeight) * 0.2
+
+  const containerAspect = (containerRef.value.clientWidth || 800) / (containerRef.value.clientHeight || 600)
+
+  let vw, vh
+  if (containerAspect > 1) {
+    vh = zoomSize
+    vw = vh * containerAspect
+  } else {
+    vw = zoomSize
+    vh = vw / containerAspect
+  }
+
+  camera.left = -vw / 2
+  camera.right = vw / 2
+  camera.top = vh / 2
+  camera.bottom = -vh / 2
+  camera.position.set(nx, ny, 1000)
+  camera.lookAt(nx, ny, 0)
+  camera.updateProjectionMatrix()
+
+  controls.target.set(nx, ny, 0)
+  controls.update()
+
+  // 添加闪烁高亮圆环
+  highlightPosition(nx, ny, zoomSize)
+}
+
+// 高亮闪烁效果
+const highlightPosition = (x, y, viewSize) => {
+  if (!scene) return
+
+  const ringRadius = viewSize * 0.06
+  const ringGeo = new THREE.RingGeometry(ringRadius * 0.7, ringRadius, 32)
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4444, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+  const ring = new THREE.Mesh(ringGeo, ringMat)
+  ring.position.set(x, y, 5)
+  scene.add(ring)
+
+  // 3秒后淡出并移除
+  let opacity = 0.9
+  const fadeInterval = setInterval(() => {
+    opacity -= 0.03
+    if (opacity <= 0) {
+      clearInterval(fadeInterval)
+      scene.remove(ring)
+      ringGeo.dispose()
+      ringMat.dispose()
+    } else {
+      ringMat.opacity = opacity
+    }
+  }, 50)
+}
+
 // ========== 事件处理 ==========
 const handleMouseMove = (event) => {
   if (!camera || !containerRef.value) return
@@ -1870,6 +1944,17 @@ const handleClick = (event) => {
   const rect = containerRef.value.getBoundingClientRect()
   const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  
+  // 计算归一化后的世界坐标 (与 handleMouseMove 逻辑一致)
+  const localX = x * (camera.right - camera.left) / 2 + camera.position.x
+  const localY = y * (camera.top - camera.bottom) / 2 + camera.position.y
+  
+  // 加上偏移量还原真实DXF坐标
+  const worldX = localX + worldOffset.x
+  const worldY = localY + worldOffset.y
+  
+  // 触发画布点击事件
+  emit('canvas-click', { x: worldX, y: worldY })
   
   const raycaster = new THREE.Raycaster()
   raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
@@ -1930,6 +2015,7 @@ defineExpose({
   fitToView,
   zoomIn,
   zoomOut,
+  focusOnCoordinate,
   getAxisLines: () => axisLines.value,
   getAxisLabels: () => axisLabels.value,
   getDxfData: () => dxfData.value
@@ -1941,7 +2027,7 @@ defineExpose({
   position: relative;
   width: 100%;
   height: 100%;
-  background: #f5f5f5;
+  background: #000000;
   overflow: hidden;
 }
 
@@ -1974,7 +2060,8 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
   z-index: 20;
 }
 

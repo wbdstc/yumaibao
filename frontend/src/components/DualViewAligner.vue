@@ -36,13 +36,13 @@
           @loaded="onCadLoaded"
           @error="onCadError"
           @part-click="onDxfPartClick"
+          @canvas-click="onDxfCanvasClick"
         />
         
-        <!-- 点选覆盖层 -->
+        <!-- 点选覆盖层 (仅作为视觉提示，不拦截点击) -->
         <div 
           v-if="showCadViewer && cadFile" 
           class="picking-overlay"
-          @click="onPickingOverlayClick"
         >
           <div class="picking-hint">
             <el-icon><Aim /></el-icon>
@@ -96,6 +96,17 @@
       <div class="view-title">
         <span><el-icon><Aim /></el-icon> 在3D模型中标记对应参考点</span>
         <div class="title-actions">
+          <el-button 
+            size="small"
+            :type="isPicking3D ? 'warning' : 'default'"
+            @click="togglePicking3D"
+          >
+            <el-icon><Aim /></el-icon>
+            {{ isPicking3D ? '停止选点' : '开始选点' }}
+          </el-button>
+          
+          <el-divider direction="vertical" />
+          
           <el-button-group size="small">
             <el-button @click="setViewAngle('front')">前</el-button>
             <el-button @click="setViewAngle('top')">俯</el-button>
@@ -283,9 +294,10 @@ const pickingOverlayRef = ref<HTMLElement | null>(null)
 
 // 阶段状态
 const stage = ref(0)
+const isPicking3D = ref(false)
 
 // CAD查看器状态
-const showCadViewer = ref(false)
+const showCadViewer = ref(0)
 const cadViewerKey = ref(0)
 
 // 参考点
@@ -357,6 +369,7 @@ const init3DScene = () => {
   
   // 添加点击事件
   renderer.domElement.addEventListener('click', on3DClick)
+  updateCursor() // 初始化光标
   
   // 加载模型
   if (props.model3D?.fileUrl) {
@@ -420,6 +433,7 @@ const animate = () => {
  * 3D点击事件
  */
 const on3DClick = (event: MouseEvent) => {
+  if (!isPicking3D.value) return // 如果未开启选点，不处理点击
   if (!camera || !scene || !renderer) return
   
   const rect = renderer.domElement.getBoundingClientRect()
@@ -437,6 +451,28 @@ const on3DClick = (event: MouseEvent) => {
     const point = intersects[0].point
     addPoint3D(point.x, point.y, point.z)
   }
+}
+
+/**
+ * 切换3D选点模式
+ */
+const togglePicking3D = () => {
+  isPicking3D.value = !isPicking3D.value
+  updateCursor()
+  
+  if (isPicking3D.value) {
+    ElMessage.info('已进入选点模式，请点击模型')
+  } else {
+    ElMessage.info('已退出选点模式')
+  }
+}
+
+/**
+ * 更新光标样式
+ */
+const updateCursor = () => {
+  if (!renderer?.domElement) return
+  renderer.domElement.style.cursor = isPicking3D.value ? 'crosshair' : 'default'
 }
 
 /**
@@ -463,6 +499,26 @@ const addPoint3D = (x: number, y: number, z: number) => {
 }
 
 /**
+ * 处理DXF画布点击（新方法）
+ */
+const onDxfCanvasClick = (coords: { x: number, y: number }) => {
+  if (stage.value !== 0) return
+  
+  // 添加参考点
+  const pointId = `p2d_${Date.now()}`
+  const label = `P${referencePoints2D.value.length + 1}`
+  
+  referencePoints2D.value.push({
+    id: pointId,
+    x: coords.x,
+    y: coords.y,
+    label
+  })
+  
+  ElMessage.success(`已标记2D参考点: ${label} (${coords.x.toFixed(0)}, ${coords.y.toFixed(0)})`)
+}
+
+/**
  * CAD加载完成
  */
 const onCadLoaded = () => {
@@ -485,25 +541,6 @@ const onDxfPartClick = (part: any) => {
 }
 
 /**
- * 选点覆盖层点击
- */
-const onPickingOverlayClick = (event: MouseEvent) => {
-  if (!dxfViewerRef.value) return
-  
-  // 获取DxfViewer的世界坐标
-  const dxfData = dxfViewerRef.value.getDxfData?.() as any
-  if (!dxfData) {
-    ElMessage.warning('图纸未加载完成')
-    return
-  }
-  
-  // 简化处理：使用点击位置相对比例计算世界坐标
-  const container = (event.target as HTMLElement).closest('.full-view-container')
-  if (!container) return
-  
-  const rect = container.getBoundingClientRect()
-  const relX = (event.clientX - rect.left) / rect.width
-  const relY = 1 - (event.clientY - rect.top) / rect.height  // Y轴翻转
   
   // 假设图纸范围 (这里需要根据实际DXF数据调整)
   const extMin = dxfData?.header?.$EXTMIN || { x: 0, y: 0 }
@@ -642,9 +679,14 @@ const calculateAlignment = () => {
   const angle3D = Math.atan2(p3D_2.z - p3D_1.z, p3D_2.x - p3D_1.x)
   alignmentParams.rotation = (angle3D - angle2D) * (180 / Math.PI)
   
-  // 计算偏移
-  alignmentParams.offsetX = p3D_1.x - p2D_1.x * alignmentParams.scale
-  alignmentParams.offsetY = p3D_1.z - p2D_1.y * alignmentParams.scale
+  // 计算偏移（需先将2D参考点旋转后再求偏移，否则只有参考点1处准确）
+  const rad = alignmentParams.rotation * Math.PI / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const rotatedX = (p2D_1.x * cos - p2D_1.y * sin) * alignmentParams.scale
+  const rotatedZ = (p2D_1.x * sin + p2D_1.y * cos) * alignmentParams.scale
+  alignmentParams.offsetX = p3D_1.x - rotatedX
+  alignmentParams.offsetY = p3D_1.z - rotatedZ
 }
 
 /**
@@ -804,7 +846,7 @@ defineExpose({
   flex: 1;
   position: relative;
   background: #fff;
-  min-height: 300px;
+  min-height: 0; /* 允许容器收缩 */
 }
 
 .bim-viewer-full {
@@ -839,6 +881,7 @@ defineExpose({
   border-radius: 24px;
   font-size: 14px;
   animation: breathe 2s infinite;
+  pointer-events: none;
 }
 
 @keyframes breathe {
@@ -850,6 +893,10 @@ defineExpose({
   padding: 16px 20px;
   background: #fff;
   border-top: 1px solid #ebeef5;
+  flex-shrink: 0; /* 防止被挤压 */
+  max-height: 35vh; /* 限制最大高度 */
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-title {
@@ -924,5 +971,37 @@ defineExpose({
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid #ebeef5;
+}
+
+.picking-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding-bottom: 40px;
+}
+
+.picking-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(64, 158, 255, 0.9);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 </style>

@@ -155,6 +155,12 @@
             {{ getFloorName(scope.row.floorId) }}
           </template>
         </el-table-column>
+        <el-table-column label="坐标" width="90" align="center">
+          <template #default="scope">
+            <el-tag v-if="scope.row.coordinates2D" type="success" size="small">已标记</el-tag>
+            <el-tag v-else type="info" size="small">未标记</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="scope">
             <el-button 
@@ -275,20 +281,17 @@
           <el-input v-model="embeddedPartForm.location" placeholder="请输入位置" />
         </el-form-item>
         
-        <!-- 坐标输入面板 -->
-        <el-collapse v-model="coordinateCollapseActive">
-          <el-collapse-item title="坐标信息（可选）" name="coordinates">
-            <CoordinateInputPanel
-              v-if="dialogVisible"
-              ref="coordinateInputRef"
-              :initial-coordinates="getInitialCoordinates()"
-              :floors="floors"
-              :selected-floor-id="embeddedPartForm.floorId"
-              :compact="true"
-              @coordinates-change="handleCoordinatesChange"
-            />
-          </el-collapse-item>
-        </el-collapse>
+        <!-- 坐标信息（只读） -->
+        <el-form-item label="坐标">
+          <template v-if="embeddedPartForm.coordinates2D">
+            <el-tag type="success" size="small" style="margin-right: 8px">
+              X: {{ embeddedPartForm.coordinates2D.x?.toFixed(1) }}, Y: {{ embeddedPartForm.coordinates2D.y?.toFixed(1) }}
+            </el-tag>
+          </template>
+          <el-text v-else type="info" size="small">
+            未标记 — 请在「BIM可视化」页面中选择预埋件并点击「在图纸上标记位置」
+          </el-text>
+        </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="embeddedPartForm.status" placeholder="选择状态" style="width: 100%">
             <el-option label="待安装" value="pending" />
@@ -345,13 +348,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/index.js'
 import * as XLSX from 'xlsx'
 import { useUserStore } from '../stores/index.js'
-import CoordinateInputPanel from '../components/CoordinateInputPanel.vue'
 
 export default {
   name: 'EmbeddedPartManagement',
-  components: {
-    CoordinateInputPanel
-  },
   setup() {
     // 数据
     const userStore = useUserStore()
@@ -416,8 +415,6 @@ export default {
       modelNumber: '',
       type: '',
       location: '',
-      coordinateX: null,  // 2D坐标X (mm)
-      coordinateY: null,  // 2D坐标Y (mm)
       status: 'pending',
       notes: ''
     })
@@ -431,33 +428,7 @@ export default {
     const qrcodeUrl = ref('')
     const selectedEmbeddedPart = ref(null)
 
-    // 坐标输入相关
-    const coordinateCollapseActive = ref([])
-    const coordinateInputRef = ref(null)
-    const currentCoordinates = ref(null)
 
-    // 获取初始坐标
-    const getInitialCoordinates = () => {
-      if (embeddedPartForm.value.coordinates2D) {
-        return {
-          x: embeddedPartForm.value.coordinates2D.x || 0,
-          y: embeddedPartForm.value.coordinates2D.y || 0,
-          z: embeddedPartForm.value.coordinates?.z || 0,
-          unit: 'mm'
-        }
-      }
-      return null
-    }
-
-    // 处理坐标变化
-    const handleCoordinatesChange = (coords) => {
-      currentCoordinates.value = coords
-      // 同时更新表单中的坐标字段
-      if (coords) {
-        embeddedPartForm.value.coordinateX = coords.x
-        embeddedPartForm.value.coordinateY = coords.y
-      }
-    }
 
     // 批量选择
     const selectedRows = ref([])
@@ -786,8 +757,7 @@ export default {
         modelNumber: '',
         type: '',
         location: '',
-        coordinateX: null,
-        coordinateY: null,
+
         status: 'pending',
         notes: ''
       }
@@ -843,16 +813,9 @@ export default {
           submitData.id = embeddedPartForm.value.id
         }
         
-        // 如果有坐标输入，构建coordinates2D对象
-        if (embeddedPartForm.value.coordinateX !== null && 
-            embeddedPartForm.value.coordinateY !== null &&
-            !isNaN(embeddedPartForm.value.coordinateX) &&
-            !isNaN(embeddedPartForm.value.coordinateY)) {
-          submitData.coordinates2D = {
-            x: Number(embeddedPartForm.value.coordinateX),
-            y: Number(embeddedPartForm.value.coordinateY)
-          }
-          console.log('✅ 构建2D坐标对象:', submitData.coordinates2D)
+        // 如果已有 coordinates2D（由图纸标记设置），保持不变
+        if (embeddedPartForm.value.coordinates2D) {
+          submitData.coordinates2D = embeddedPartForm.value.coordinates2D
         }
         
         console.log('最终提交数据:', submitData)
@@ -1029,13 +992,7 @@ export default {
             status: item.status || 'pending'
           }
           
-          // 处理坐标：如果Excel中有coordinateX和coordinateY，构建coordinates2D对象
-          if (item.coordinateX !== undefined && item.coordinateY !== undefined) {
-            newItem.coordinates2D = {
-              x: Number(item.coordinateX),
-              y: Number(item.coordinateY)
-            }
-          }
+          // 坐标由图纸标记设置，导入时不处理坐标列
           
           return newItem
         })
@@ -1078,9 +1035,7 @@ export default {
           location: '一层A区',
           floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
           status: 'pending',
-          coordinateX: 1000,
-          coordinateY: 2000,
-          notes: '示例说明1'
+          notes: '导入后请在BIM可视化页面标记坐标'
         },
         {
           name: '预埋件2',
@@ -1090,9 +1045,7 @@ export default {
           location: '二层B区',
           floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
           status: 'pending',
-          coordinateX: 1500,
-          coordinateY: 2500,
-          notes: '示例说明2'
+          notes: ''
         }
       ]
       
@@ -1169,13 +1122,7 @@ export default {
       handleSelectionChange,
       handleBatchDelete,
       selectedRows,
-      handleFloorChange,
-      // 坐标输入相关
-      coordinateCollapseActive,
-      coordinateInputRef,
-      currentCoordinates,
-      getInitialCoordinates,
-      handleCoordinatesChange
+      handleFloorChange
     }
   }
 }
