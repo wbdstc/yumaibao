@@ -69,7 +69,12 @@ class EmbeddedPartController {
   // 创建单个预埋件
   static async createEmbeddedPart(req: Request, res: Response) {
     try {
-      const { projectId, name, type, modelNumber, description, location, coordinates } = req.body;
+      const { projectId, name, type, modelNumber, description, location, coordinates, code, floorId, notes, coordinates2D, status } = req.body;
+
+      // 校验 projectId 必填
+      if (!projectId) {
+        return res.status(400).json({ message: '创建预埋件失败：projectId 为必填字段' });
+      }
 
       // 生成预埋件唯一ID
       const partId = uuidv4();
@@ -108,9 +113,13 @@ class EmbeddedPartController {
         description,
         location,
         coordinates,
+        code,
+        floorId,
+        notes,
+        coordinates2D,
         qrCodeData,
         qrCodeUrl,
-        status: 'pending'
+        status: status || 'pending'
       });
 
       // 保存文件记录到modelFiles集合
@@ -145,6 +154,9 @@ class EmbeddedPartController {
       }
 
       const projectId = parts[0].projectId;
+      if (!projectId) {
+        return res.status(400).json({ message: '批量创建预埋件失败：projectId 为必填字段' });
+      }
 
       // 获取该项目的所有楼层
       let floorMap = new Map<string, string>(); // name -> id
@@ -599,7 +611,7 @@ class EmbeddedPartController {
       const { projectId, floorId } = req.params;
       const embeddedParts = await EmbeddedPart.findAll({
         projectId,
-        location: { $regex: floorId, $options: 'i' }
+        floorId
       });
       return res.status(200).json(embeddedParts);
     } catch (error) {

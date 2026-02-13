@@ -26,7 +26,7 @@
 
     <!-- 统计卡片 -->
     <div class="stats-cards">
-      <el-card class="stat-card construction-card" shadow="hover">
+      <el-card class="stat-card construction-card clickable-card" shadow="hover" @click="navigateToProjects">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ projectStats.totalProjects }}</div>
@@ -38,7 +38,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card construction-card" shadow="hover">
+      <el-card class="stat-card construction-card clickable-card" shadow="hover" @click="navigateToEmbeddedParts">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.totalParts }}</div>
@@ -50,7 +50,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card construction-card" shadow="hover">
+      <el-card class="stat-card construction-card clickable-card" shadow="hover" @click="navigateToEmbeddedParts">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ embeddedPartStats.installedParts }}</div>
@@ -110,7 +110,7 @@
         </div>
       </el-card>
 
-      <el-card class="stat-card construction-card" shadow="hover">
+      <el-card class="stat-card construction-card clickable-card" shadow="hover" @click="navigateToProjects">
         <div class="stat-content">
           <div class="stat-info">
             <div class="stat-value">{{ projectStats.completedProjects }}</div>
@@ -539,15 +539,19 @@ export default {
       router.push('/projects')
     }
 
+    // 导航到预埋件管理
+    const navigateToEmbeddedParts = () => {
+      router.push('/embedded-parts')
+    }
+
     // 导航到扫描页面
     const navigateToScan = () => {
       router.push('/scan')
     }
 
-    // 查看项目详情
+    // 查看项目详情 - 跳转到项目管理页面
     const viewProject = (project) => {
-      projectStore.selectProject(project)
-      router.push(`/bim?projectId=${project.id}`)
+      router.push(`/projects/${project.id}`)
     }
 
     // 初始化图表
@@ -777,17 +781,18 @@ export default {
         
         // 处理API响应格式 - 后端可能返回 {total, data} 或直接返回数组
         let embeddedPartsArray = []
-        let totalPartsCount = 0
         
         if (response && typeof response === 'object') {
           if (Array.isArray(response.data)) {
             embeddedPartsArray = response.data
-            totalPartsCount = response.total || embeddedPartsArray.length
           } else if (Array.isArray(response)) {
             embeddedPartsArray = response
-            totalPartsCount = embeddedPartsArray.length
           }
         }
+        
+        // 过滤掉没有 projectId 的孤儿预埋件
+        embeddedPartsArray = embeddedPartsArray.filter(p => p.projectId)
+        const totalPartsCount = embeddedPartsArray.length
         
         // 更新本地数据引用，供图表使用
         dashboardData.value = embeddedPartsArray
@@ -1001,9 +1006,9 @@ export default {
       router.push(`/projects/${project.id}`)
     }
     
-    // 处理行点击
+    // 处理行点击 - 跳转到项目管理
     const handleRowClick = (project) => {
-      viewProject(project)
+      router.push(`/projects/${project.id}`)
     }
     
     // 处理日期范围变化
@@ -1073,6 +1078,7 @@ export default {
       getScanActionText,
       getScanStatusText,
       navigateToProjects,
+      navigateToEmbeddedParts,
       navigateToScan,
       viewProject,
       calculateCompletionRate,
@@ -1159,6 +1165,14 @@ export default {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
   border-color: var(--construction-blue-light);
+}
+
+.clickable-card {
+  cursor: pointer;
+}
+
+.clickable-card:active {
+  transform: translateY(-2px);
 }
 
 .stat-card:hover::before {
