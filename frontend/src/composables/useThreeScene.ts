@@ -75,7 +75,7 @@ const defaultOptions: ThreeSceneOptions = {
     axesSize: 5,
     cameraPosition: { x: 10, y: 10, z: 10 },
     cameraNear: 0.1,
-    cameraFar: 1000,
+    cameraFar: 10000,
     cameraFov: 75,
     enableDamping: true,
     dampingFactor: 0.05

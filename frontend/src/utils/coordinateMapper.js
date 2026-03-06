@@ -249,6 +249,9 @@ export class CoordinateMapper {
     updateConfig(newConfig) {
         // 检查是否是双视图对齐传入的参数（含 scale/offsetX/offsetY）
         if (newConfig.scale !== undefined || newConfig.offsetX !== undefined) {
+            // 标记已进行对齐校准
+            this.config.isAligned = true;
+
             // 将对齐参数正确映射到 alignment 结构
             if (newConfig.rotation !== undefined) {
                 this.config.alignment.rotation = newConfig.rotation
@@ -273,6 +276,14 @@ export class CoordinateMapper {
         }
         // 清空缓存，因为配置已改变
         this.clearCache()
+    }
+
+    /**
+     * 检查是否已进行双视图对齐校准
+     * @returns {boolean}
+     */
+    isAligned() {
+        return !!this.config.isAligned;
     }
 
     /**

@@ -241,6 +241,9 @@ const initThreeJs = () => {
   canvas.addEventListener('mousemove', handleMouseMove)
   canvas.addEventListener('click', handleClick)
   
+  // 监听 OrbitControls 的 change 事件，滚轮缩放/拖拽时同步更新坐标
+  controls.addEventListener('change', handleControlsChange)
+  
   // 渲染循环
   animate()
   
@@ -363,6 +366,9 @@ const cleanup = () => {
     canvasRef.value.removeEventListener('mousemove', handleMouseMove)
     canvasRef.value.removeEventListener('click', handleClick)
   }
+  
+  // 移除 OrbitControls 事件
+  controls?.removeEventListener('change', handleControlsChange)
   
   // 释放所有组的资源
   disposeGroup(dxfGroup)
@@ -1516,7 +1522,7 @@ const updateEmbeddedParts = () => {
   const viewWidth = Math.abs(viewDims.max.x - viewDims.min.x) || 2000
   const viewHeight = Math.abs(viewDims.max.y - viewDims.min.y) || 2000
   const viewSize = Math.min(viewWidth, viewHeight)
-  const circleRadius = Math.max(viewSize * 0.01, 1)
+  const circleRadius = Math.max(viewSize * 0.0002, 0.1)
   
   // 获取归一化参数
   const offsetX = worldOffset.x || 0
@@ -1550,15 +1556,53 @@ const updateAnnotations = () => {
   
   if (axisLines.value.length === 0) return
   
-  const hLines = axisLines.value.filter(l => l.isHorizontal).map(l => l.position)
-  const vLines = axisLines.value.filter(l => !l.isHorizontal).map(l => l.position)
+  const hLines = axisLines.value.filter(l => l.isHorizontal)
+  const vLines = axisLines.value.filter(l => !l.isHorizontal)
   
   // 获取归一化参数
   const offsetX = worldOffset.x || 0
   const offsetY = worldOffset.y || 0
   const scale = worldOffset.scale || 1
   
-  props.embeddedParts.forEach(part => {
+  // 引线长度（归一化单位）
+  const viewWidth = Math.abs(viewDims.max.x - viewDims.min.x) || 2000
+  const viewHeight = Math.abs(viewDims.max.y - viewDims.min.y) || 2000
+  const viewSize = Math.min(viewWidth, viewHeight)
+  const leaderLen = viewSize * 0.02  // 引线长度：可视范围的 2%
+  
+  /**
+   * 过滤有效的轴号标签（排除坐标值、长数字等无效轴号）
+   * 有效轴号例如：A, B, 1, 2, A-1, ①, ②
+   * 无效例如：133800, 297450
+   */
+  const validAxisLabels = axisLabels.value.filter(label => {
+    const t = label.text.trim()
+    if (t.length === 0 || t.length > 5) return false
+    // 排除纯数字且 > 999 的（这些通常是坐标值而非轴号）
+    if (/^\d+$/.test(t) && parseInt(t) > 999) return false
+    return true
+  })
+  
+  /**
+   * 根据归一化后的轴线位置，找到最近的有效轴号
+   */
+  const findAxisLabel = (axisLine) => {
+    if (validAxisLabels.length === 0) return ''
+    let bestLabel = ''
+    let bestDist = Infinity
+    validAxisLabels.forEach(label => {
+      const d = axisLine.isHorizontal
+        ? Math.abs(label.position.y - axisLine.position)
+        : Math.abs(label.position.x - axisLine.position)
+      if (d < bestDist) {
+        bestDist = d
+        bestLabel = label.text
+      }
+    })
+    return bestLabel
+  }
+  
+  props.embeddedParts.forEach((part, partIndex) => {
     if (!part.coordinates2D) return
     
     // 对预埋件坐标应用归一化变换
@@ -1566,81 +1610,108 @@ const updateAnnotations = () => {
     const py = (part.coordinates2D.y - offsetY) * scale
     
     if (vLines.length > 0) {
-      const nearestV = vLines.reduce((prev, curr) => 
-        Math.abs(curr - px) < Math.abs(prev - px) ? curr : prev
+      const nearest = vLines.reduce((prev, curr) =>
+        Math.abs(curr.position - px) < Math.abs(prev.position - px) ? curr : prev
       )
-      const distX = Math.abs(px - nearestV)
-      drawDistanceAnnotation(px, py, nearestV, py, distX)
+      const distNorm = Math.abs(px - nearest.position)
+      const distReal = distNorm / scale
+      const axisName = findAxisLabel(nearest)
+      // 引线方向：右上
+      drawLeaderAnnotation(px, py, leaderLen, leaderLen * 0.6, distReal, axisName, 'X')
     }
     
     if (hLines.length > 0) {
-      const nearestH = hLines.reduce((prev, curr) => 
-        Math.abs(curr - py) < Math.abs(prev - py) ? curr : prev
+      const nearest = hLines.reduce((prev, curr) =>
+        Math.abs(curr.position - py) < Math.abs(prev.position - py) ? curr : prev
       )
-      const distY = Math.abs(py - nearestH)
-      drawDistanceAnnotation(px, py, px, nearestH, distY)
+      const distNorm = Math.abs(py - nearest.position)
+      const distReal = distNorm / scale
+      const axisName = findAxisLabel(nearest)
+      // 引线方向：右下（避免与上面的重叠）
+      drawLeaderAnnotation(px, py, leaderLen, -leaderLen * 0.6, distReal, axisName, 'Y')
     }
   })
 }
 
-const drawDistanceAnnotation = (x1, y1, x2, y2, distance) => {
-  // 动态计算尺寸：基于可视范围
+/**
+ * 绘制引线标注：从预埋件位置引出一条斜线，标签放在引线末端
+ * @param {number} px - 预埋件归一化 X
+ * @param {number} py - 预埋件归一化 Y
+ * @param {number} dx - 引线 X 方向偏移
+ * @param {number} dy - 引线 Y 方向偏移
+ * @param {number} distReal - 真实DXF距离 (mm)
+ * @param {string} axisName - 轴号名称
+ * @param {string} direction - 'X' 或 'Y'，表示距离方向
+ */
+const drawLeaderAnnotation = (px, py, dx, dy, distReal, axisName, direction) => {
   const viewWidth = Math.abs(viewDims.max.x - viewDims.min.x) || 2000
   const viewHeight = Math.abs(viewDims.max.y - viewDims.min.y) || 2000
   const viewSize = Math.min(viewWidth, viewHeight)
-  const unitSize = viewSize * 0.005 // 基础单位：可视范围的 0.5%
-  
-  // 虚线
-  const lineGeometry = new THREE.BufferGeometry()
-  const vertices = new Float32Array([x1, y1, 2, x2, y2, 2])
-  lineGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
-  
-  const lineMaterial = new THREE.LineDashedMaterial({
-    color: 0xff4444,
-    dashSize: unitSize * 2,
-    gapSize: unitSize
-  })
-  const line = new THREE.Line(lineGeometry, lineMaterial)
-  line.computeLineDistances()
-  annotationGroup.add(line)
-  
-  // 距离文字（使用 Canvas + Sprite）
-  const midX = (x1 + x2) / 2
-  const midY = (y1 + y2) / 2
-  
+  const unitSize = viewSize * 0.001
+
+  // 引线终点
+  const endX = px + dx
+  const endY = py + dy
+
+  // ① 引线（实线，细）
+  const lineGeo = new THREE.BufferGeometry()
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(
+    new Float32Array([px, py, 2, endX, endY, 2]), 3
+  ))
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xff6666, linewidth: 1 })
+  annotationGroup.add(new THREE.Line(lineGeo, lineMat))
+
+  // ② 引线末端小圆点
+  const dotGeo = new THREE.CircleGeometry(unitSize * 0.3, 12)
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0xff6666 })
+  const dot = new THREE.Mesh(dotGeo, dotMat)
+  dot.position.set(px, py, 2)
+  annotationGroup.add(dot)
+
+  // ③ 文字标签（放在引线末端）
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  const text = `${Math.round(distance)}`
-  const fontSize = 48
-  
+
+  const distText = Math.round(distReal)
+  let text
+  if (axisName) {
+    text = `${direction}→轴${axisName}: ${distText}mm`
+  } else {
+    text = `${direction}: ${distText}mm`
+  }
+  const fontSize = 32
+
   ctx.font = `bold ${fontSize}px Arial`
   const metrics = ctx.measureText(text)
-  
-  canvas.width = metrics.width + 20
-  canvas.height = fontSize + 20
-  
-  // 白色背景
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  
-  // 红色文字
+
+  const pad = 6
+  canvas.width = Math.ceil(metrics.width) + pad * 2
+  canvas.height = fontSize + pad * 2
+
+  // 半透明深色背景
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+  ctx.beginPath()
+  ctx.roundRect(0, 0, canvas.width, canvas.height, 4)
+  ctx.fill()
+
+  // 白色文字
   ctx.font = `bold ${fontSize}px Arial`
-  ctx.fillStyle = '#ff4444'
+  ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(text, canvas.width / 2, canvas.height / 2)
-  
+
   const texture = new THREE.CanvasTexture(canvas)
-  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false })
-  const sprite = new THREE.Sprite(material)
-  
-  // Sprite 尺寸基于可视范围的比例，而非固定像素值
-  const spriteHeight = unitSize * 6
-  const spriteWidth = spriteHeight * (canvas.width / canvas.height)
-  
-  sprite.position.set(midX, midY, 3)
-  sprite.scale.set(spriteWidth, spriteHeight, 1)
-  
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
+  const sprite = new THREE.Sprite(spriteMat)
+
+  const spriteH = unitSize * 1.2
+  const spriteW = spriteH * (canvas.width / canvas.height)
+
+  // 标签放在引线终点稍外侧
+  sprite.position.set(endX + spriteW * 0.5, endY, 3)
+  sprite.scale.set(spriteW, spriteH, 1)
+
   annotationGroup.add(sprite)
 }
 
@@ -1920,21 +1991,61 @@ const highlightPosition = (x, y, viewSize) => {
 }
 
 // ========== 事件处理 ==========
-const handleMouseMove = (event) => {
-  if (!camera || !containerRef.value) return
+
+/**
+ * 将屏幕像素坐标转换为真实DXF世界坐标
+ * 正确考虑了：
+ *  - 正交相机 left/right/top/bottom 视锥体
+ *  - 相机的 zoom 属性（OrbitControls 缩放修改的是 zoom，不是 frustum）
+ *  - 渲染时的 worldOffset (偏移 + 缩放)
+ */
+const screenToWorld = (clientX, clientY) => {
+  if (!camera || !containerRef.value) return null
   
   const rect = containerRef.value.getBoundingClientRect()
-  const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-  const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  // NDC: [-1, 1]
+  const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1
+  const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1
   
-  // 计算归一化后的世界坐标
-  const localX = x * (camera.right - camera.left) / 2 + camera.position.x
-  const localY = y * (camera.top - camera.bottom) / 2 + camera.position.y
+  // 正交相机：需要除以 zoom 才能得到正确的世界坐标
+  // 可见宽度 = (right - left) / zoom, 可见高度 = (top - bottom) / zoom
+  const zoom = camera.zoom || 1
+  const localX = ndcX * (camera.right - camera.left) / (2 * zoom) + camera.position.x
+  const localY = ndcY * (camera.top - camera.bottom) / (2 * zoom) + camera.position.y
   
-  // 加上偏移量还原真实DXF坐标
-  mouseCoord.value = { 
-    x: localX + worldOffset.x, 
-    y: localY + worldOffset.y 
+  // 反推真实DXF坐标：渲染时做的变换是 renderCoord = (dxfCoord - offset) * scale
+  // 所以逆变换是 dxfCoord = renderCoord / scale + offset
+  const scale = worldOffset.scale || 1
+  return {
+    x: localX / scale + worldOffset.x,
+    y: localY / scale + worldOffset.y
+  }
+}
+
+// 缓存最后一次鼠标位置，用于 controls change 事件更新坐标
+let lastMouseClientX = 0
+let lastMouseClientY = 0
+
+const handleMouseMove = (event) => {
+  // 缓存鼠标位置
+  lastMouseClientX = event.clientX
+  lastMouseClientY = event.clientY
+  
+  const coord = screenToWorld(event.clientX, event.clientY)
+  if (coord) {
+    mouseCoord.value = coord
+  }
+}
+
+/**
+ * OrbitControls change 事件处理器
+ * 滚轮缩放或拖拽平移时，即使鼠标没有移动，坐标也需要更新
+ */
+const handleControlsChange = () => {
+  if (lastMouseClientX === 0 && lastMouseClientY === 0) return
+  const coord = screenToWorld(lastMouseClientX, lastMouseClientY)
+  if (coord) {
+    mouseCoord.value = coord
   }
 }
 
@@ -1942,22 +2053,18 @@ const handleClick = (event) => {
   if (!camera || !scene) return
   
   const rect = containerRef.value.getBoundingClientRect()
-  const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-  const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1
   
-  // 计算归一化后的世界坐标 (与 handleMouseMove 逻辑一致)
-  const localX = x * (camera.right - camera.left) / 2 + camera.position.x
-  const localY = y * (camera.top - camera.bottom) / 2 + camera.position.y
-  
-  // 加上偏移量还原真实DXF坐标
-  const worldX = localX + worldOffset.x
-  const worldY = localY + worldOffset.y
-  
-  // 触发画布点击事件
-  emit('canvas-click', { x: worldX, y: worldY })
+  // 使用统一的坐标转换
+  const worldCoord = screenToWorld(event.clientX, event.clientY)
+  if (worldCoord) {
+    // 触发画布点击事件（真实DXF坐标）
+    emit('canvas-click', { x: worldCoord.x, y: worldCoord.y })
+  }
   
   const raycaster = new THREE.Raycaster()
-  raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
+  raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
   
   const intersects = raycaster.intersectObjects(embeddedPartsGroup.children)
   

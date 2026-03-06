@@ -258,7 +258,7 @@
     <el-card class="history-card">
       <div class="card-header">
         <h3>操作历史</h3>
-        <el-button type="text" @click="clearHistory">清空历史</el-button>
+        <el-button link type="primary" @click="clearHistory">清空历史</el-button>
       </div>
       <el-divider></el-divider>
       <div class="history-list">

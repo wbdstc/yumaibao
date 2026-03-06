@@ -343,8 +343,7 @@ const getFloorName = (floorId: string | undefined) => {
 // 点击预埋件
 const handlePartClick = (part: EmbeddedPart) => {
   selectedPart.value = part
-  detailsDialogVisible.value = true
-  emit('part-select', part)
+  // 只发出高亮事件，由父组件决定何时弹出详情（3D模式需要延迟）
   emit('part-highlight', part)
 }
 

@@ -12,6 +12,7 @@ export interface EmbeddedPartAttributes {
   description?: string;
   location: string;
   floorId?: string;
+  elevation?: number; // 自定义预埋件高度 (Z轴/Y轴高程)
   coordinates?: any; // JSON格式的三维坐标
   coordinates2D?: any; // JSON格式的二维坐标
   code?: string;
@@ -37,6 +38,7 @@ export interface EmbeddedPartCreationAttributes {
   description?: string;
   location: string;
   floorId?: string;
+  elevation?: number;
   coordinates?: any;
   coordinates2D?: any;
   code?: string;

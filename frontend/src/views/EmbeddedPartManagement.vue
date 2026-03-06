@@ -143,6 +143,12 @@
         <el-table-column prop="type" label="类型" width="100" />
         <el-table-column prop="modelNumber" label="型号" width="100" />
         <el-table-column prop="location" label="位置" min-width="150" />
+        <el-table-column label="高程(m)" width="90" align="center">
+          <template #default="scope">
+            <span v-if="scope.row.elevation !== undefined && scope.row.elevation !== null">{{ scope.row.elevation }}</span>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small">
@@ -277,9 +283,24 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="位置" prop="location">
-          <el-input v-model="embeddedPartForm.location" placeholder="请输入位置" />
-        </el-form-item>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="位置" prop="location">
+              <el-input v-model="embeddedPartForm.location" placeholder="请输入位置" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="高度(高程)" prop="elevation">
+              <el-input-number 
+                v-model="embeddedPartForm.elevation" 
+                :precision="3" 
+                :step="0.1" 
+                placeholder="在此输入自定义高度" 
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
         
         <!-- 坐标信息（只读） -->
         <el-form-item label="坐标">
@@ -415,6 +436,7 @@ export default {
       modelNumber: '',
       type: '',
       location: '',
+      elevation: null,
       status: 'pending',
       notes: ''
     })
@@ -757,7 +779,7 @@ export default {
         modelNumber: '',
         type: '',
         location: '',
-
+        elevation: null,
         status: 'pending',
         notes: ''
       }
@@ -776,6 +798,13 @@ export default {
       } else {
         embeddedPartForm.value.coordinateX = null
         embeddedPartForm.value.coordinateY = null
+      }
+      
+      // 处理高程
+      if (row.elevation !== undefined) {
+        embeddedPartForm.value.elevation = row.elevation
+      } else {
+        embeddedPartForm.value.elevation = null
       }
       
       // 🔧 修复：加载对应项目的楼层数据
@@ -804,6 +833,7 @@ export default {
           modelNumber: embeddedPartForm.value.modelNumber,
           type: embeddedPartForm.value.type,
           location: embeddedPartForm.value.location,
+          elevation: embeddedPartForm.value.elevation,
           status: embeddedPartForm.value.status,
           notes: embeddedPartForm.value.notes || ''
         }

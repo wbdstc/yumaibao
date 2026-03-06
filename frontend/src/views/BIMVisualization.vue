@@ -403,6 +403,18 @@ const handleProjectChange = async (projectId: string) => {
   // 初始化坐标转换器
   if (floors.value.length > 0) {
     coordinateMapper = createDefaultMapper(floors.value)
+    
+    // 尝试加载后端的对齐配置
+    try {
+      const configRes = await api.project.getCoordinateConfig(projectId)
+      const savedConfig = configRes.data || configRes
+      if (savedConfig && savedConfig.isAligned) {
+        coordinateMapper.updateConfig(savedConfig)
+        console.log('✅ 已加载项目的坐标对齐配置:', savedConfig)
+      }
+    } catch (err) {
+      console.warn('未加载到项目的自定义坐标对齐配置，使用默认配置')
+    }
   }
 }
 
@@ -472,9 +484,21 @@ const handlePartHighlight = (part: any) => {
     cadViewer2DRef.value.focusOnCoordinate(part.coordinates2D.x, part.coordinates2D.y)
   }
   
-  // 在3D视图中高亮
+  // 在3D视图中高亮 —— 先播放脉冲高亮动画，延迟后再弹出详情
   if (currentView.value === '3d' && bimViewer3DRef.value) {
     bimViewer3DRef.value.highlightPart(part)
+    
+    // 延迟2秒后再弹出详细信息，让用户先看到高亮定位效果
+    setTimeout(() => {
+      if (embeddedPartPanelRef.value) {
+        embeddedPartPanelRef.value.showPartDetails(part)
+      }
+    }, 2000)
+  } else {
+    // 非3D视图：立即弹出详情
+    if (embeddedPartPanelRef.value) {
+      embeddedPartPanelRef.value.showPartDetails(part)
+    }
   }
   
   mobileDrawerVisible.value = false
@@ -661,22 +685,37 @@ const onCanvasClick = async (coord: { x: number; y: number }) => {
   }
 }
 
-const onAlignmentComplete = (params: any) => {
+const onAlignmentComplete = async (params: any) => {
   console.log('对齐完成:', params)
   
+  const newConfig = {
+    scale: params.scale,
+    rotation: params.rotation,
+    offsetX: params.offsetX,
+    offsetY: params.offsetY,
+    isAligned: true
+  }
+
   // 保存对齐参数到坐标转换器
   if (coordinateMapper) {
-    coordinateMapper.updateConfig({
-      scale: params.scale,
-      rotation: params.rotation,
-      offsetX: params.offsetX,
-      offsetY: params.offsetY
-    })
+    coordinateMapper.updateConfig(newConfig)
+  }
+  
+  // 保存到后端
+  try {
+    if (selectedProjectId.value) {
+      await api.project.updateCoordinateConfig(selectedProjectId.value, newConfig)
+      ElMessage.success('对齐参数已永久保存至项目')
+    } else {
+      ElMessage.success('对齐参数已在本地保存')
+    }
+  } catch (err) {
+    console.error('保存对齐参数失败:', err)
+    ElMessage.warning('对齐参数应用成功，但未能持久化到服务器')
   }
   
   // 返回3D视图
   currentView.value = '3d'
-  ElMessage.success('对齐参数已保存')
   
   // 对齐完成后刷新预埋件的3D位置
   nextTick(() => {
@@ -705,8 +744,38 @@ onMounted(async () => {
   // 处理URL参数（QR码扫描跳转）
   const partId = route.query.partId as string
   if (partId) {
-    // TODO: 实现扫码跳转定位功能
-    console.log('从URL参数跳转，目标预埋件:', partId)
+    console.log('🔗 从URL参数跳转，目标预埋件:', partId)
+    try {
+      // 1. 获取预埋件详情以知道它属于哪个项目和楼层
+      const res = await api.embeddedPart.getEmbeddedPart(partId)
+      const part = res.data || res
+      if (part && part.projectId) {
+        // 2. 切换到对应的项目
+        await handleProjectChange(part.projectId)
+        
+        // 3. 切换到对应的楼层
+        if (part.floorId) {
+          await handleFloorChange(part.floorId)
+        }
+        
+        // 4. 确保当前是 3D 视图，并尝试找到 3D 模型进行加载
+        currentView.value = '3d'
+        const model3D = models.value.find(m => m.type === '3d')
+        if (model3D) {
+          await handleModelChange(model3D)
+        }
+        
+        // 5. 等待 3D 场景初始化完成后高亮该预埋件
+        setTimeout(() => {
+          handlePartHighlight(part)
+        }, 1500)
+      } else {
+        ElMessage.warning('未能找到扫描的预埋件信息所属的项目')
+      }
+    } catch (err) {
+      console.error('扫码跳转加载预埋件失败:', err)
+      ElMessage.error('无法加载该预埋件数据')
+    }
   }
 })
 

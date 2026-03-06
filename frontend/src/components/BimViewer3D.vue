@@ -167,6 +167,10 @@ const partMeshMap = shallowRef<Record<string, any>>({})
 let highlightedMesh: THREE.Mesh | null = null
 let pulseAnimationId: number | null = null
 
+// 3D模型的包围盒（用于将预埋件球体映射到模型范围内）
+let modelBoundingBox: THREE.Box3 | null = null
+let sceneCenter: THREE.Vector3 = new THREE.Vector3(0, 5, 0)
+
 // 鼠标射线检测
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
@@ -216,7 +220,63 @@ const getMissingCoordinatePosition = (floorId?: string, index: number = 0): Coor
 }
 
 /**
- * 创建预埋件球体
+ * 将 2D 坐标映射到 3D 模型的 XZ 范围内
+ * 当没有 coordinateMapper 校准时，自动将所有预埋件的 2D 坐标按比例
+ * 映射到模型的 XZ 平面上，使球体与模型重叠显示
+ */
+const mapCoord2DToModelSpace = (coord2D: { x: number; y: number }, floorId?: string): Coordinate3D => {
+  const floorHeight = getFloorHeight(floorId)
+  
+  // 如果没有模型包围盒，直接用 mm → m 转换
+  if (!modelBoundingBox) {
+    return {
+      x: coord2D.x / 1000,
+      y: floorHeight,
+      z: coord2D.y / 1000
+    }
+  }
+  
+  // 计算所有预埋件 2D 坐标的边界范围
+  const parts2D = props.embeddedParts.filter(p => p.coordinates2D)
+  if (parts2D.length === 0) {
+    return { x: modelBoundingBox.min.x, y: floorHeight, z: modelBoundingBox.min.z }
+  }
+  
+  let minX2D = Infinity, maxX2D = -Infinity
+  let minY2D = Infinity, maxY2D = -Infinity
+  parts2D.forEach(p => {
+    minX2D = Math.min(minX2D, p.coordinates2D!.x)
+    maxX2D = Math.max(maxX2D, p.coordinates2D!.x)
+    minY2D = Math.min(minY2D, p.coordinates2D!.y)
+    maxY2D = Math.max(maxY2D, p.coordinates2D!.y)
+  })
+  
+  const range2DX = maxX2D - minX2D || 1
+  const range2DY = maxY2D - minY2D || 1
+  
+  // 模型 XZ 范围（留 10% 边距）
+  const modelSize = modelBoundingBox.getSize(new THREE.Vector3())
+  const margin = 0.1
+  const modelMinX = modelBoundingBox.min.x + modelSize.x * margin
+  const modelMaxX = modelBoundingBox.max.x - modelSize.x * margin
+  const modelMinZ = modelBoundingBox.min.z + modelSize.z * margin
+  const modelMaxZ = modelBoundingBox.max.z - modelSize.z * margin
+  
+  // 线性映射：2D → 模型 XZ
+  const tx = (coord2D.x - minX2D) / range2DX  // 0~1
+  const tz = (coord2D.y - minY2D) / range2DY  // 0~1
+  
+  const x = modelMinX + tx * (modelMaxX - modelMinX)
+  const z = modelMinZ + tz * (modelMaxZ - modelMinZ)
+  
+  // Y 使用模型顶部 + 1m（或楼层高度，取较大值）
+  const y = Math.max(floorHeight, modelBoundingBox.max.y + 1)
+  
+  return { x, y, z }
+}
+
+/**
+ * 创建预埋件球体（带文字标签）
  */
 const createEmbeddedPartSpheres = () => {
   if (!threeScene.scene.value) {
@@ -232,6 +292,9 @@ const createEmbeddedPartSpheres = () => {
   const newMeshMap: Record<string, THREE.Mesh> = {}
   let missingCoordCount = 0
   
+  // 用于统计坐标范围
+  const positions: { x: number; y: number; z: number }[] = []
+  
   props.embeddedParts.forEach((ep) => {
     let position: Coordinate3D | null = null
     let hasMissingCoord = false
@@ -240,12 +303,16 @@ const createEmbeddedPartSpheres = () => {
     if (ep.coordinates && ep.coordinates.x !== undefined && ep.coordinates.y !== undefined && ep.coordinates.z !== undefined) {
       position = ep.coordinates
     }
-    // 其次尝试使用坐标转换器计算3D位置
-    else if (ep.coordinates2D && props.coordinateMapper) {
+    // 其次尝试使用坐标转换器计算3D位置（前提是已经校准过）
+    else if (ep.coordinates2D && props.coordinateMapper && typeof props.coordinateMapper.isAligned === 'function' && props.coordinateMapper.isAligned()) {
       const coord3D = props.coordinateMapper.convert2DTo3D(ep.coordinates2D, ep.floorId)
       if (coord3D) {
         position = coord3D
       }
+    }
+    // 兆底：将 2D 坐标映射到模型的 XZ 范围内
+    else if (ep.coordinates2D) {
+      position = mapCoord2DToModelSpace(ep.coordinates2D, ep.floorId)
     }
     
     // 如果没有有效坐标，标记为缺失并使用固定位置
@@ -254,26 +321,52 @@ const createEmbeddedPartSpheres = () => {
       position = getMissingCoordinatePosition(ep.floorId, missingCoordCount)
       missingCoordCount++
       console.warn(`⚠️ 预埋件 ${ep.name} (${ep.code}) 缺少坐标信息`)
+    } else if (typeof ep.elevation === 'number') {
+      // --- 用户自定义了高度（高程），严格使用此高度 ---
+      position.y = ep.elevation
+    } else if (modelBoundingBox && threeScene.scene.value) {
+      // --- 没有高度时，使用射线检测吸附到模型真实表面 ---
+      const rayOrigin = new THREE.Vector3(position.x, modelBoundingBox.max.y + 10, position.z)
+      const rayDir = new THREE.Vector3(0, -1, 0)
+      const dropRaycaster = new THREE.Raycaster(rayOrigin, rayDir)
+      
+      const modelObjects = threeScene.scene.value.children.filter(child => 
+        child.type !== 'GridHelper' && 
+        child.type !== 'AxesHelper' && 
+        child.type !== 'AmbientLight' && 
+        child.type !== 'DirectionalLight' &&
+        !child.userData?.embeddedPartId
+      )
+
+      const intersects = dropRaycaster.intersectObjects(modelObjects, true)
+      if (intersects.length > 0) {
+        // 放置在表面附近，略微突起以便能看到，既然用户不要透视那就让它嵌在表面一半
+        position.y = intersects[0].point.y
+      }
     }
+    
+    positions.push(position)
     
     // 创建球体
     const geometry = new THREE.SphereGeometry(0.5, 32, 32)
     const material = new THREE.MeshStandardMaterial({
       color: getStatusColor(ep.status),
-      // 缺少坐标时使用透明效果
-      transparent: hasMissingCoord,
-      opacity: hasMissingCoord ? 0.5 : 1.0
+      transparent: true,
+      opacity: hasMissingCoord ? 0.3 : 0.85
+      // 移除 depthTest: false，恢复真实的物理遮挡
     })
+    
     const mesh = new THREE.Mesh(geometry, material)
+    
     mesh.position.set(position.x, position.y, position.z)
     mesh.userData = {
       embeddedPartId: ep.id,
       embeddedPartName: ep.name,
       embeddedPartCode: ep.code,
-      hasMissingCoord: hasMissingCoord  // 标记是否缺失坐标
+      hasMissingCoord: hasMissingCoord
     }
     
-    // 如果缺少坐标，添加警告标记（一个小的问号图标球体）
+    // 如果缺少坐标，添加警告标记
     if (hasMissingCoord) {
       const warnGeometry = new THREE.SphereGeometry(0.15, 16, 16)
       const warnMaterial = new THREE.MeshStandardMaterial({
@@ -285,8 +378,15 @@ const createEmbeddedPartSpheres = () => {
       warnMesh.position.set(0.4, 0.4, 0)
       mesh.add(warnMesh)
     }
+
+    // ========== 文字标签（Sprite）==========
+    const label = createPartLabel(ep.name, ep.code, ep.status)
+    // 标签需要在渲染层级最前，确保始终可见
+    label.renderOrder = 1001 
+    // 标签位置根据是否嵌入模型稍微抬高，如果自定义了高程则紧贴球体上方
+    label.position.set(0, typeof ep.elevation === 'number' ? 0.8 : 1.5, 0)
+    mesh.add(label)
     
-    // 使用markRaw避免Vue响应式系统干扰
     const nonReactiveMesh = markRaw(mesh)
     
     threeScene.addToScene(nonReactiveMesh)
@@ -294,6 +394,18 @@ const createEmbeddedPartSpheres = () => {
   })
   
   partMeshMap.value = newMeshMap
+  
+  // 诊断日志：打印坐标范围
+  if (positions.length > 0) {
+    const xs = positions.map(p => p.x)
+    const ys = positions.map(p => p.y)
+    const zs = positions.map(p => p.z)
+    console.log('📊 预埋件球体坐标范围:', {
+      x: `[${Math.min(...xs).toFixed(1)}, ${Math.max(...xs).toFixed(1)}]`,
+      y: `[${Math.min(...ys).toFixed(1)}, ${Math.max(...ys).toFixed(1)}]`,
+      z: `[${Math.min(...zs).toFixed(1)}, ${Math.max(...zs).toFixed(1)}]`
+    })
+  }
   
   if (missingCoordCount > 0) {
     console.warn(`⚠️ 共有 ${missingCoordCount} 个预埋件缺少坐标信息，显示在左下角区域`)
@@ -303,7 +415,74 @@ const createEmbeddedPartSpheres = () => {
     })
   }
   
+  // 诊断日志不再调整相机——让调用方决定
   console.log('✅ 预埋件球体创建完成')
+}
+
+/**
+ * 创建预埋件文字标签 (Sprite)
+ */
+const createPartLabel = (name: string, code: string, status: string): THREE.Sprite => {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  
+  const line1 = name || '未命名'
+  const line2 = code || ''
+  const fontSize = 28
+  const padding = 8
+  
+  ctx.font = `bold ${fontSize}px Arial`
+  const w1 = ctx.measureText(line1).width
+  const w2 = line2 ? ctx.measureText(line2).width : 0
+  const textWidth = Math.max(w1, w2)
+  
+  const lines = line2 ? 2 : 1
+  canvas.width = Math.ceil(textWidth) + padding * 2
+  canvas.height = fontSize * lines + padding * 2 + (lines > 1 ? 4 : 0)
+  
+  // 半透明深色背景 + 圆角
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+  ctx.beginPath()
+  ctx.roundRect(0, 0, canvas.width, canvas.height, 6)
+  ctx.fill()
+  
+  // 左侧状态色条
+  const statusColors: Record<string, string> = {
+    pending: '#ff9800',
+    installed: '#4caf50',
+    inspected: '#2196f3',
+    completed: '#9e9e9e'
+  }
+  ctx.fillStyle = statusColors[status] || '#ff9800'
+  ctx.fillRect(0, 0, 4, canvas.height)
+  
+  // 文字
+  ctx.font = `bold ${fontSize}px Arial`
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText(line1, canvas.width / 2, padding)
+  if (line2) {
+    ctx.font = `${fontSize * 0.85}px Arial`
+    ctx.fillStyle = '#aaaaaa'
+    ctx.fillText(line2, canvas.width / 2, padding + fontSize + 4)
+  }
+  
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.minFilter = THREE.LinearFilter
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    depthTest: false,
+    transparent: true
+  })
+  const sprite = markRaw(new THREE.Sprite(spriteMaterial))
+  
+  // 标签尺寸（世界单位）
+  const aspect = canvas.width / canvas.height
+  const labelHeight = 1.0
+  sprite.scale.set(labelHeight * aspect, labelHeight, 1)
+  
+  return sprite
 }
 
 /**
@@ -311,6 +490,14 @@ const createEmbeddedPartSpheres = () => {
  */
 const clearEmbeddedPartSpheres = () => {
   Object.values(partMeshMap.value).forEach(mesh => {
+    // 先释放子对象资源（标签精灵、警告球体等）
+    mesh.children.forEach((child: any) => {
+      if (child.geometry) child.geometry.dispose()
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose()
+        child.material.dispose()
+      }
+    })
     threeScene.removeFromScene(mesh)
     mesh.geometry.dispose()
     if (mesh.material instanceof THREE.Material) {
@@ -400,11 +587,25 @@ const loadModel = async () => {
         const nonReactiveModel = markRaw(model)
         threeScene.addToScene(nonReactiveModel)
         
-        // 调整相机
+        // 计算并存储模型包围盒
+        modelBoundingBox = new THREE.Box3().setFromObject(model)
+        sceneCenter = modelBoundingBox.getCenter(new THREE.Vector3())
+        const modelSize = modelBoundingBox.getSize(new THREE.Vector3())
+        console.log('📦 3D模型包围盒:', {
+          min: `(${modelBoundingBox.min.x.toFixed(1)}, ${modelBoundingBox.min.y.toFixed(1)}, ${modelBoundingBox.min.z.toFixed(1)})`,
+          max: `(${modelBoundingBox.max.x.toFixed(1)}, ${modelBoundingBox.max.y.toFixed(1)}, ${modelBoundingBox.max.z.toFixed(1)})`,
+          size: `(${modelSize.x.toFixed(1)}, ${modelSize.y.toFixed(1)}, ${modelSize.z.toFixed(1)})`,
+          center: `(${sceneCenter.x.toFixed(1)}, ${sceneCenter.y.toFixed(1)}, ${sceneCenter.z.toFixed(1)})`
+        })
+        
+        // 调整相机看到模型
         threeScene.fitCameraToObject(model, 1.5)
         
         // 创建预埋件球体
         createEmbeddedPartSpheres()
+        
+        // 最终相机调整：基于模型+球体（排除grid/axes/light）
+        fitCameraToContent()
         
         isModelLoaded.value = true
         isLoading.value = false
@@ -420,7 +621,7 @@ const loadModel = async () => {
           loadingMessage.value = `加载中... ${percent}%`
         }
       },
-      (error: ErrorEvent) => {
+      (error: unknown) => {
         console.error('加载BIM模型失败:', error)
         isLoading.value = false
         isModelLoaded.value = true
@@ -519,9 +720,6 @@ const highlightPart = (part: EmbeddedPart) => {
   }
   
   pulseAnimation()
-  
-  emit('part-highlight', part)
-  ElMessage.success({ message: `已定位到预埋件: ${part.name}`, duration: 2000 })
 }
 
 /**
@@ -558,27 +756,92 @@ const toggleGrid = () => {
 }
 
 /**
- * 重置相机
+ * 将相机适配到内容（排除GridHelper、AxesHelper、Light等辅助对象）
  */
-const resetCamera = () => {
-  threeScene.setCameraPosition(15, 15, 15)
-  threeScene.setControlsTarget(0, 0, 0)
+const fitCameraToContent = () => {
+  if (!threeScene.scene.value || !threeScene.camera.value || !threeScene.controls.value) return
+  
+  // 收集内容对象（模型 + 球体），排除辅助对象
+  const contentGroup = new THREE.Group()
+  threeScene.scene.value.children.forEach((child: THREE.Object3D) => {
+    if (
+      child instanceof THREE.GridHelper ||
+      child instanceof THREE.AxesHelper ||
+      child instanceof THREE.Light
+    ) {
+      return // 跳过辅助对象
+    }
+    // 临时添加一个定位点（不克隆，只标记位置）
+    const marker = new THREE.Object3D()
+    const box = new THREE.Box3().setFromObject(child)
+    if (!box.isEmpty()) {
+      marker.position.copy(box.min)
+      contentGroup.add(marker)
+      const marker2 = new THREE.Object3D()
+      marker2.position.copy(box.max)
+      contentGroup.add(marker2)
+    }
+  })
+  
+  if (contentGroup.children.length === 0) return
+  
+  const contentBox = new THREE.Box3().setFromObject(contentGroup)
+  if (contentBox.isEmpty()) return
+  
+  sceneCenter = contentBox.getCenter(new THREE.Vector3())
+  const size = contentBox.getSize(new THREE.Vector3())
+  const maxDim = Math.max(size.x, size.y, size.z)
+  
+  console.log('📐 内容包围盒:', {
+    min: `(${contentBox.min.x.toFixed(1)}, ${contentBox.min.y.toFixed(1)}, ${contentBox.min.z.toFixed(1)})`,
+    max: `(${contentBox.max.x.toFixed(1)}, ${contentBox.max.y.toFixed(1)}, ${contentBox.max.z.toFixed(1)})`,
+    center: `(${sceneCenter.x.toFixed(1)}, ${sceneCenter.y.toFixed(1)}, ${sceneCenter.z.toFixed(1)})`,
+    maxDim: maxDim.toFixed(1)
+  })
+  
+  // 用 fitCameraToObject 的逻辑，但基于内容包围盒
+  const fov = threeScene.camera.value.fov * (Math.PI / 180)
+  let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5
+  
+  threeScene.camera.value.position.set(
+    sceneCenter.x + cameraZ * 0.5,
+    sceneCenter.y + cameraZ * 0.5,
+    sceneCenter.z + cameraZ
+  )
+  threeScene.controls.value.target.copy(sceneCenter)
+  threeScene.controls.value.update()
 }
 
 /**
- * 设置视角
+ * 重置相机（基于场景中心）
+ */
+const resetCamera = () => {
+  fitCameraToContent()
+}
+
+/**
+ * 设置视角（基于场景中心）
  */
 const setViewAngle = (angle: 'front' | 'top' | 'side' | 'iso') => {
-  const distance = 30
+  const c = sceneCenter
+  // 根据内容范围计算合适距离（不包含grid）
+  let distance = 30
+  if (modelBoundingBox) {
+    const size = modelBoundingBox.getSize(new THREE.Vector3())
+    distance = Math.max(size.x, size.y, size.z) * 2.5
+  }
+  // 确保最小距离
+  distance = Math.max(distance, 20)
+  
   const positions: Record<string, { x: number; y: number; z: number }> = {
-    front: { x: 0, y: 5, z: distance },
-    top: { x: 0, y: distance, z: 0.1 },
-    side: { x: distance, y: 5, z: 0 },
-    iso: { x: distance * 0.7, y: distance * 0.7, z: distance * 0.7 }
+    front: { x: c.x, y: c.y + distance * 0.2, z: c.z + distance },
+    top:   { x: c.x, y: c.y + distance, z: c.z + 0.1 },
+    side:  { x: c.x + distance, y: c.y + distance * 0.2, z: c.z },
+    iso:   { x: c.x + distance * 0.5, y: c.y + distance * 0.5, z: c.z + distance * 0.5 }
   }
   
   const pos = positions[angle]
-  threeScene.animateCameraTo(pos, { x: 0, y: 5, z: 0 }, 500)
+  threeScene.animateCameraTo(pos, { x: c.x, y: c.y, z: c.z }, 500)
 }
 
 // 初始化
