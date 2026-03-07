@@ -12,6 +12,7 @@ import SystemSettings from '../views/SystemSettings.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ProjectStatistics from '../views/ProjectStatistics.vue'
 import ModelManagement from '../views/ModelManagement.vue'
+import ManualCenter from '../views/ManualCenter.vue'
 
 const routes = [
   {
@@ -71,6 +72,12 @@ const routes = [
         path: 'project-statistics',
         name: 'ProjectStatistics',
         component: ProjectStatistics,
+        meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }
+      },
+      {
+        path: 'manual',
+        name: 'ManualCenter',
+        component: ManualCenter,
         meta: { requiresRole: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'] }
       }
     ]

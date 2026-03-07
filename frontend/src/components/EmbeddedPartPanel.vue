@@ -142,6 +142,15 @@
           >
             确认验收
           </el-button>
+
+          <el-button 
+            type="success" 
+            plain
+            @click="$router.push('/manual')"
+            icon="Reading"
+          >
+            技术百科
+          </el-button>
         </div>
       </div>
     </el-dialog>
@@ -176,7 +185,7 @@
 <script setup lang="ts">
 import { ref, computed, type PropType } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, RefreshRight, Search, MapLocation } from '@element-plus/icons-vue'
+import { Document, RefreshRight, Search, MapLocation, Reading } from '@element-plus/icons-vue'
 
 /**
  * 预埋件接口定义
@@ -360,40 +369,15 @@ const handleMarkPosition = () => {
 }
 
 // 确认安装
-const handleConfirmInstallation = async () => {
+const handleConfirmInstallation = () => {
   if (!selectedPart.value) return
-  
-  try {
-    await ElMessageBox.confirm(
-      `确定要确认安装预埋件：${selectedPart.value.name} (${selectedPart.value.code}) 吗？`,
-      '确认安装',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-
-    actionLoading.value = true
-    emit('status-change', selectedPart.value.id, 'installed', '')
-    
-    // 更新本地状态
-    selectedPart.value.status = 'installed'
-    
-    ElMessage.success('安装确认成功')
-    
-  } catch (error) {
-    if (error === 'cancel') return
-    console.error('安装确认失败:', error)
-  } finally {
-    actionLoading.value = false
-  }
+  emit('status-change', selectedPart.value.id, 'installed', '')
 }
 
 // 确认验收点击
 const handleConfirmInspection = () => {
-  inspectionNotes.value = ''
-  inspectionDialogVisible.value = true
+  if (!selectedPart.value) return
+  emit('status-change', selectedPart.value.id, 'inspected', '')
 }
 
 // 提交验收

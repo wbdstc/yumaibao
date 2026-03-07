@@ -154,7 +154,9 @@ class ProjectModel {
       { $set: updateData },
       { returnDocument: 'after' }
     );
-    return result ? result.value : null;
+    if (!result) return null;
+    const doc = (result as any).value || result;
+    return doc as ProjectAttributes;
   }
 
   // 删除项目
@@ -186,7 +188,11 @@ class ProjectModel {
       },
       { returnDocument: 'after' }
     );
-    return result ? result.value : null;
+
+    // 兼容 MongoDB Node Driver v4/v5 和 v6+ 的不同返回结构
+    if (!result) return null;
+    const doc = (result as any).value || result;
+    return doc as ProjectAttributes;
   }
 
   // 获取项目坐标配置

@@ -10,7 +10,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 // 预埋件管理路由
-router.get('/', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), EmbeddedPartController.getAllEmbeddedParts);
+router.get('/', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'), EmbeddedPartController.getAllEmbeddedParts);
 router.get('/:id', authenticate, EmbeddedPartController.getEmbeddedPartById);
 router.post('/', authenticate, authorize('projectManager', 'admin', 'projectEngineer'), EmbeddedPartController.createEmbeddedPart);
 router.put('/:id', authenticate, authorize('projectManager', 'admin', 'projectEngineer', 'qualityInspector'), EmbeddedPartController.updateEmbeddedPart);

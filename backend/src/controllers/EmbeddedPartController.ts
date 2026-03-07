@@ -11,18 +11,28 @@ import { uploadFileToMinIO, deleteFileFromMinIO, downloadFileFromMinIO } from '.
 import { MINIO_BUCKETS } from '../config/minio';
 
 class EmbeddedPartController {
-  // 获取所有预埋件
   static async getAllEmbeddedParts(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = '' } = req.query;
+      const { page = 1, limit = 10, search = '', keyword = '', projectId, floorId, status } = req.query;
       const pageNum = Number(page);
       const limitNum = Number(limit);
       const skip = (pageNum - 1) * limitNum;
 
       // 构建查询条件
       const whereClause: any = {};
-      if (search) {
-        whereClause.name = { $regex: search, $options: 'i' };
+      const searchTerm = search || keyword;
+      if (searchTerm) {
+        whereClause.name = { $regex: searchTerm, $options: 'i' };
+      }
+
+      if (projectId) {
+        whereClause.projectId = projectId;
+      }
+      if (floorId) {
+        whereClause.floorId = floorId;
+      }
+      if (status) {
+        whereClause.status = status;
       }
 
       const db = getDB();
@@ -710,7 +720,7 @@ class EmbeddedPartController {
   static async confirmInstallation(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
 
       if (!userId) {
         return res.status(401).json({ message: '未授权' });
@@ -756,7 +766,7 @@ class EmbeddedPartController {
     try {
       const { id } = req.params;
       const { status, notes } = req.body;
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
 
       if (!userId) {
         return res.status(401).json({ message: '未授权' });
@@ -804,7 +814,7 @@ class EmbeddedPartController {
     try {
       const { id } = req.params;
       const { status, notes } = req.body; // status: 'installed' or 'inspected'
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
 
       if (!userId) {
         return res.status(401).json({ message: '未授权' });

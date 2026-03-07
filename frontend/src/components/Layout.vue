@@ -84,6 +84,13 @@
             <span>项目统计</span>
           </template>
         </el-menu-item>
+        <!-- 信息中心菜单项 - 所有角色可见 -->
+        <el-menu-item index="/manual">
+          <el-icon><Guide /></el-icon>
+          <template #title>
+            <span>信息中心</span>
+          </template>
+        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -153,6 +160,10 @@
         <el-icon><TrendCharts /></el-icon>
         <span>项目统计</span>
       </div>
+      <div class="mobile-nav-item" :class="{ active: activeIndex === '/manual' }" @click="$router.push('/manual')">
+        <el-icon><Guide /></el-icon>
+        <span>信息中心</span>
+      </div>
     </div>
   </div>
 </template>
@@ -172,7 +183,8 @@ import {
   SwitchButton,
   View,
   User,
-  TrendCharts
+  TrendCharts,
+  Guide
 } from '@element-plus/icons-vue'
 
 export default {
@@ -188,7 +200,8 @@ export default {
     SwitchButton,
     View,
     User,
-    TrendCharts
+    TrendCharts,
+    Guide
   },
   setup() {
     const router = useRouter()

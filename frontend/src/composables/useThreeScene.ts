@@ -12,7 +12,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 // 添加类型声明扩展
 declare module 'three' {
     interface BufferAttribute {
-        addUpdateRange?(start: number, count: number): void
+        addUpdateRange(start: number, count: number): void
     }
 }
 

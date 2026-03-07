@@ -53,7 +53,7 @@ router.get('/projects', authenticate, async (req, res) => {
       return res.status(401).json({ message: '未认证' });
     }
     const { role } = req.user;
-    const whereClause = role === 'admin' ? {} : { createdBy: req.user.userId };
+    const whereClause = role === 'admin' ? {} : { createdBy: req.user.id };
     const projects = await Project.findAll(whereClause);
     return res.status(200).json(projects);
   } catch (error) {

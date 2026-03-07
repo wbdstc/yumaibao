@@ -11,6 +11,7 @@ import modelRoutes from './routes/modelRoutes';
 import embeddedPartRoutes from './routes/embeddedPartRoutes';
 import mobileRoutes from './routes/mobileRoutes';
 import reportRoutes from './routes/reportRoutes';
+import technicalManualRoutes from './routes/technicalManualRoutes';
 
 // 数据库导入
 import { connectToMongoDB } from './config/mongodb';
@@ -32,12 +33,14 @@ app.use(cors({
 }));
 
 // 配置 body parser - 重要：确保二进制数据不会被错误解析
-app.use(bodyParser.json({ limit: '50mb', verify: (req: any, _res: any, _buf: any, _encoding: any) => {
-  // 对于二进制请求，不要解析 JSON
-  if (req.is && (req.is('multipart/form-data') || req.is('application/octet-stream'))) {
-    return;
+app.use(bodyParser.json({
+  limit: '50mb', verify: (req: any, _res: any, _buf: any, _encoding: any) => {
+    // 对于二进制请求，不要解析 JSON
+    if (req.is && (req.is('multipart/form-data') || req.is('application/octet-stream'))) {
+      return;
+    }
   }
-}}));
+}));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // 健康检查路由
@@ -52,6 +55,7 @@ app.use('/api/models', modelRoutes);
 app.use('/api/embedded-parts', embeddedPartRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/manuals', technicalManualRoutes);
 
 // 设置MIME类型映射
 app.use((req, res, next) => {
@@ -75,7 +79,7 @@ async function startServer() {
     // 连接MongoDB
     await connectToMongoDB();
     console.log('MongoDB数据库连接成功');
-    
+
     // 初始化MinIO存储桶
     const minioInitResult = await ensureBucketsExist();
     if (!minioInitResult.success) {
@@ -85,7 +89,7 @@ async function startServer() {
     } else {
       console.log('MinIO存储桶初始化成功');
     }
-    
+
     // 启动服务器
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {

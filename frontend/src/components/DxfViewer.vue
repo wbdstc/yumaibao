@@ -413,9 +413,17 @@ const loadDxfFile = async (file) => {
       dxfText = await response.text()
     }
     
+    // 确保 DXF 文件以 EOF 结尾，防止 parser 抛出 unexpectedly end of input 错误
+    let processedText = dxfText.trimEnd()
+    if (!processedText.endsWith('EOF')) {
+      console.warn('⚠️ DXF文件可能不完整或缺少EOF标记，尝试自动修复...')
+      // 补全 EOF 块
+      processedText += '\n  0\nEOF\n'
+    }
+    
     // 解析 DXF
     const parser = new DxfParser()
-    const dxf = parser.parseSync(dxfText)
+    const dxf = parser.parseSync(processedText)
     dxfData.value = dxf
     
     console.log('DXF 解析完成:', dxf)

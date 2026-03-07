@@ -254,17 +254,7 @@ export default {
   // 预埋件相关API
   embeddedPart: {
     getEmbeddedParts(params) {
-      // 如果同时有 projectId 和 floorId，使用楼层精确查询
-      if (params && params.projectId && params.floorId) {
-        const { projectId, floorId, ...otherParams } = params
-        return api.get(`/embedded-parts/project/${projectId}/floor/${floorId}`, { params: otherParams })
-      }
-      // 如果有projectId，使用按项目查询的API
-      if (params && params.projectId) {
-        const { projectId, ...otherParams } = params
-        return api.get(`/embedded-parts/project/${projectId}`, { params: otherParams })
-      }
-      // 否则使用通用查询API
+      // 统一使用带有各种过滤参数和分页支持的通用查询API
       return api.get('/embedded-parts', { params })
     },
     getEmbeddedPart(id) {
@@ -386,6 +376,21 @@ export default {
       return api.post('/reports/generate-file', { reportData, format }, {
         responseType: 'blob' // 重要：设置响应类型为blob以接收文件
       })
+    }
+  },
+  // 技术手册/信息中心API
+  manual: {
+    getManuals() {
+      return api.get('/manuals')
+    },
+    getManualById(id) {
+      return api.get(`/manuals/${id}`)
+    },
+    searchManuals(keyword) {
+      return api.get('/manuals/search', { params: { keyword } })
+    },
+    seedManuals() {
+      return api.post('/manuals/seed')
     }
   }
 }

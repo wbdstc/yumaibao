@@ -175,8 +175,20 @@ export default {
     // 获取项目的预埋件数据
     const getProjectEmbeddedParts = async (projectId) => {
       try {
-        const response = await api.embeddedPart.getEmbeddedParts({ projectId })
-        embeddedParts.value = response
+        // 获取预埋件数据 - 获取更多数据以确保统计准确
+        const response = await api.embeddedPart.getEmbeddedParts({ projectId, limit: 10000 })
+        
+        // 处理API响应格式 - 后端返回 {total, data} 或直接返回数组
+        let embeddedPartsArray = []
+        
+        if (response && typeof response === 'object') {
+          if (Array.isArray(response.data)) {
+            embeddedPartsArray = response.data
+          } else if (Array.isArray(response)) {
+            embeddedPartsArray = response
+          }
+        }
+        embeddedParts.value = embeddedPartsArray
       } catch (error) {
         console.error('获取预埋件数据失败:', error)
         ElMessage.error('获取预埋件数据失败')

@@ -248,6 +248,63 @@
         <span>菜单</span>
       </div>
     </div>
+
+    <!-- 施工/验收拍照打卡对话框 -->
+    <el-dialog
+      v-model="punchInDialogVisible"
+      :title="punchInTitle"
+      width="90%"
+      class="punch-in-dialog"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="punch-in-content">
+        <div class="part-brief" v-if="selectedPart">
+          <h3>{{ selectedPart.name }}</h3>
+          <p>{{ selectedPart.code }} | {{ selectedPart.location }}</p>
+        </div>
+        
+        <el-form label-position="top">
+          <el-form-item label="现场照片 (打卡)">
+            <el-upload
+              v-model:file-list="punchInFiles"
+              action="#"
+              list-type="picture-card"
+              :auto-upload="false"
+              :limit="5"
+              accept="image/*"
+              multiple
+            >
+              <el-icon><Camera /></el-icon>
+              <template #tip>
+                <div class="el-upload__tip">支持选择或拍摄最多5张照片</div>
+              </template>
+            </el-upload>
+          </el-form-item>
+          
+          <el-form-item label="备注/记录">
+            <el-input
+              v-model="punchInNotes"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入施工或验收记录（选填）"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="punchInDialogVisible = false">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="submitPunchIn" 
+            :loading="isSubmittingPunchIn"
+          >
+            确认提交
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -298,6 +355,14 @@ const isMobile = ref(false)
 const mobileDrawerVisible = ref(false)
 const isThreeJsInitialized = ref(false)
 const selectedPart = ref<any>(null)  // 当前选中的预埋件
+
+// 打卡相关
+const punchInDialogVisible = ref(false)
+const punchInFiles = ref<any[]>([])
+const punchInNotes = ref('')
+const isSubmittingPunchIn = ref(false)
+const punchInTargetStatus = ref('')
+const punchInTitle = computed(() => punchInTargetStatus.value === 'installed' ? '施工打卡确认' : '验收打卡确认')
 const isMarkingPosition = ref(false) // 是否处于坐标标记模式
 const markingPart = ref<any>(null)   // 正在标记的预埋件
 
@@ -376,7 +441,7 @@ const getEmbeddedParts = async (projectId: string, floorId?: string) => {
     const params: any = { projectId }
     if (floorId) params.floorId = floorId
     const response = await api.embeddedPart.getEmbeddedParts(params)
-    const data = response.data || response || []
+    const data = response.data || (Array.isArray(response) ? response : [])
     // 过滤掉没有 projectId 的孤儿预埋件
     embeddedParts.value = Array.isArray(data) 
       ? data.filter((p: any) => p.projectId) 
@@ -408,8 +473,16 @@ const handleProjectChange = async (projectId: string) => {
     try {
       const configRes = await api.project.getCoordinateConfig(projectId)
       const savedConfig = configRes.data || configRes
-      if (savedConfig && savedConfig.isAligned) {
-        coordinateMapper.updateConfig(savedConfig)
+      if (savedConfig && savedConfig.isConfigured && savedConfig.modelConfig) {
+        // 将后端嵌套结构映射回 coordinateMapper 需要的平铺结构
+        const mappedConfig = {
+          offsetX: savedConfig.modelConfig.offsetX,
+          offsetY: savedConfig.modelConfig.offsetY,
+          scale: savedConfig.modelConfig.scale,
+          rotation: savedConfig.modelConfig.rotationY,
+          isAligned: true
+        }
+        coordinateMapper.updateConfig(mappedConfig)
         console.log('✅ 已加载项目的坐标对齐配置:', savedConfig)
       }
     } catch (err) {
@@ -568,6 +641,51 @@ const quickConfirmInspection = async () => {
 }
 
 const handleStatusChange = async (partId: string, status: string, notes?: string) => {
+  const part = embeddedParts.value.find(p => p.id === partId)
+  if (!part) return
+
+  selectedPart.value = part
+  punchInTargetStatus.value = status
+  punchInNotes.value = notes || ''
+  punchInFiles.value = []
+  punchInDialogVisible.value = true
+}
+
+const submitPunchIn = async () => {
+  if (!selectedPart.value) return
+  
+  try {
+    isSubmittingPunchIn.value = true
+    
+    // 提取文件对象
+    const files = punchInFiles.value.map(f => f.raw).filter(Boolean)
+    
+    if (punchInTargetStatus.value === 'installed') {
+      await api.mobile.installEmbeddedPart(selectedPart.value.id, files)
+    } else if (punchInTargetStatus.value === 'inspected') {
+      await api.mobile.inspectEmbeddedPart(selectedPart.value.id, { 
+        status: 'inspected', 
+        notes: punchInNotes.value 
+      }, files)
+    }
+    
+    // 更新本地状态
+    selectedPart.value.status = punchInTargetStatus.value
+    
+    // 刷新3D显示
+    refreshEmbeddedPartsIn3D()
+    
+    ElMessage.success('打卡提交成功')
+    punchInDialogVisible.value = false
+  } catch (error) {
+    console.error('打卡提交失败:', error)
+    ElMessage.error('提交失败，请重试')
+  } finally {
+    isSubmittingPunchIn.value = false
+  }
+}
+
+const handleStatusChangeInternal = async (partId: string, status: string, notes?: string) => {
   try {
     await api.embeddedPart.updateScanStatus(partId, status, notes || '')
     
@@ -696,15 +814,38 @@ const onAlignmentComplete = async (params: any) => {
     isAligned: true
   }
 
-  // 保存对齐参数到坐标转换器
+  // 保存对齐参数到前端坐标转换器
   if (coordinateMapper) {
     coordinateMapper.updateConfig(newConfig)
   }
   
   // 保存到后端
+  // 后端接口要求 cadConfig 和 modelConfig 的嵌套结构
+  const backendConfig = {
+    isConfigured: true,
+    cadConfig: {
+      originX: params.offsetX,
+      originY: params.offsetY,
+      rotation: params.rotation,
+      unit: 'mm',
+      unitToMeter: params.scale,
+      yAxisUp: true
+    },
+    modelConfig: {
+      offsetX: params.offsetX,
+      offsetY: params.offsetY,
+      offsetZ: 0,
+      scale: params.scale,
+      rotationX: 0,
+      rotationY: params.rotation, // 通常在2D到3D映射中，2D的旋转对应3D绕Y轴的旋转
+      rotationZ: 0
+    }
+  }
+  
+  // 保存到后端
   try {
     if (selectedProjectId.value) {
-      await api.project.updateCoordinateConfig(selectedProjectId.value, newConfig)
+      await api.project.updateCoordinateConfig(selectedProjectId.value, backendConfig)
       ElMessage.success('对齐参数已永久保存至项目')
     } else {
       ElMessage.success('对齐参数已在本地保存')
@@ -967,6 +1108,47 @@ onUnmounted(() => {
   .model-container {
     height: calc(60vh - 38px);
     min-height: 350px;
+  }
+}
+/* 打卡对话框样式 */
+.punch-in-dialog :deep(.el-dialog__body) {
+  padding-top: 10px;
+}
+
+.punch-in-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.part-brief h3 {
+  margin: 0 0 4px 0;
+  color: #303133;
+}
+
+.part-brief p {
+  margin: 0;
+  color: #909399;
+  font-size: 13px;
+}
+
+.punch-in-dialog :deep(.el-upload--picture-card) {
+  width: 80px;
+  height: 80px;
+  line-height: normal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.punch-in-dialog :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: 80px;
+  height: 80px;
+}
+
+@media (max-width: 480px) {
+  .punch-in-dialog {
+    --el-dialog-width: 95% !important;
   }
 }
 </style>
