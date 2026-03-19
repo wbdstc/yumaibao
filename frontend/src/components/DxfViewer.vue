@@ -1642,11 +1642,11 @@ const updateAnnotations = () => {
 }
 
 /**
- * 绘制引线标注：从预埋件位置引出一条斜线，标签放在引线末端
+ * 绘制标注：直接显示在预埋件标记的旁边，无引出线
  * @param {number} px - 预埋件归一化 X
  * @param {number} py - 预埋件归一化 Y
- * @param {number} dx - 引线 X 方向偏移
- * @param {number} dy - 引线 Y 方向偏移
+ * @param {number} dx - X 方向偏移 (决定标签方向)
+ * @param {number} dy - Y 方向偏移 (决定标签方向)
  * @param {number} distReal - 真实DXF距离 (mm)
  * @param {string} axisName - 轴号名称
  * @param {string} direction - 'X' 或 'Y'，表示距离方向
@@ -1657,26 +1657,7 @@ const drawLeaderAnnotation = (px, py, dx, dy, distReal, axisName, direction) => 
   const viewSize = Math.min(viewWidth, viewHeight)
   const unitSize = viewSize * 0.001
 
-  // 引线终点
-  const endX = px + dx
-  const endY = py + dy
-
-  // ① 引线（实线，细）
-  const lineGeo = new THREE.BufferGeometry()
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(
-    new Float32Array([px, py, 2, endX, endY, 2]), 3
-  ))
-  const lineMat = new THREE.LineBasicMaterial({ color: 0xff6666, linewidth: 1 })
-  annotationGroup.add(new THREE.Line(lineGeo, lineMat))
-
-  // ② 引线末端小圆点
-  const dotGeo = new THREE.CircleGeometry(unitSize * 0.3, 12)
-  const dotMat = new THREE.MeshBasicMaterial({ color: 0xff6666 })
-  const dot = new THREE.Mesh(dotGeo, dotMat)
-  dot.position.set(px, py, 2)
-  annotationGroup.add(dot)
-
-  // ③ 文字标签（放在引线末端）
+  // 文字标签
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
 
@@ -1713,11 +1694,15 @@ const drawLeaderAnnotation = (px, py, dx, dy, distReal, axisName, direction) => 
   const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
   const sprite = new THREE.Sprite(spriteMat)
 
-  const spriteH = unitSize * 1.2
+  const spriteH = unitSize * 0.7
   const spriteW = spriteH * (canvas.width / canvas.height)
 
-  // 标签放在引线终点稍外侧
-  sprite.position.set(endX + spriteW * 0.5, endY, 3)
+  // 标签放在预埋件旁边，根据偏移方向缩短距离
+  const offsetMultiplier = 0.08
+  const labelX = px + dx * offsetMultiplier + (dx > 0 ? spriteW * 0.5 : -spriteW * 0.5)
+  const labelY = py + dy * offsetMultiplier
+
+  sprite.position.set(labelX, labelY, 3)
   sprite.scale.set(spriteW, spriteH, 1)
 
   annotationGroup.add(sprite)
@@ -1941,10 +1926,10 @@ const focusOnCoordinate = (rawX, rawY) => {
 
   console.log('📍 定位到坐标:', { rawX, rawY, nx, ny })
 
-  // 计算视口大小：图纸总范围的 20%，让目标放大显示
+  // 计算视口大小：图纸总范围的 2%，让目标放大显示
   const viewWidth = Math.abs(viewDims.max.x - viewDims.min.x) || 2000
   const viewHeight = Math.abs(viewDims.max.y - viewDims.min.y) || 2000
-  const zoomSize = Math.min(viewWidth, viewHeight) * 0.2
+  const zoomSize = Math.min(viewWidth, viewHeight) * 0.02
 
   const containerAspect = (containerRef.value.clientWidth || 800) / (containerRef.value.clientHeight || 600)
 

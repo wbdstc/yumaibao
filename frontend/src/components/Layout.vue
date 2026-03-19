@@ -48,7 +48,7 @@
           <!-- BIM可视化主页面 - 所有角色可见 -->
           <el-menu-item index="/bim">
             <el-icon><Monitor /></el-icon>
-            <span>模型查看</span>
+            <span>预埋件定位</span>
           </el-menu-item>
           <!-- 模型管理页面 - 仅管理员、项目经理和工程师可见 -->
           <el-menu-item index="/model-management" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
