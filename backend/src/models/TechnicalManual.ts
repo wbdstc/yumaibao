@@ -71,6 +71,13 @@ class TechnicalManualModel {
         return result.deletedCount > 0;
     }
 
+    // 按分类查询（支持前缀匹配，如 "安装教程-平板式预埋件"）
+    async findByCategory(category: string): Promise<TechnicalManualAttributes[]> {
+        return await this.getCollection().find<TechnicalManualAttributes>({
+            category: { $regex: `^${category}`, $options: 'i' }
+        }).sort({ order: 1 }).toArray();
+    }
+
     // 搜索功能
     async search(keyword: string): Promise<TechnicalManualAttributes[]> {
         return await this.getCollection().find<TechnicalManualAttributes>({

@@ -83,38 +83,71 @@
     <el-dialog
       v-model="detailsDialogVisible"
       title="预埋件详情"
-      width="500px"
+      width="700px"
       append-to-body
       destroy-on-close
       draggable
       :modal="false" 
       :close-on-click-modal="false"
       class="draggable-dialog"
+      @open="handleDialogOpen"
     >
       <div v-if="selectedPart" class="part-details-content">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="名称">{{ selectedPart.name }}</el-descriptions-item>
-          <el-descriptions-item label="编号">{{ selectedPart.code }}</el-descriptions-item>
-          <el-descriptions-item label="型号">{{ selectedPart.modelNumber }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ selectedPart.type }}</el-descriptions-item>
-          <el-descriptions-item label="位置">{{ selectedPart.location }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusTagType(selectedPart.status)">
-              {{ getStatusLabel(selectedPart.status) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="所属项目">{{ getProjectName(selectedPart.projectId) }}</el-descriptions-item>
-          <el-descriptions-item label="所属楼层">{{ getFloorName(selectedPart.floorId) }}</el-descriptions-item>
-          <el-descriptions-item label="2D坐标">
-            <template v-if="selectedPart.coordinates2D">
-              <span class="coord-value">X: {{ selectedPart.coordinates2D.x.toFixed(1) }}, Y: {{ selectedPart.coordinates2D.y.toFixed(1) }}</span>
+        <el-tabs v-model="activeTab" type="border-card">
+          <!-- 基本信息标签页 -->
+          <el-tab-pane label="基本信息" name="info">
+            <el-descriptions :column="1" border>
+              <el-descriptions-item label="名称">{{ selectedPart.name }}</el-descriptions-item>
+              <el-descriptions-item label="编号">{{ selectedPart.code }}</el-descriptions-item>
+              <el-descriptions-item label="型号">{{ selectedPart.modelNumber }}</el-descriptions-item>
+              <el-descriptions-item label="类型">{{ selectedPart.type }}</el-descriptions-item>
+              <el-descriptions-item label="位置">{{ selectedPart.location }}</el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="getStatusTagType(selectedPart.status)">
+                  {{ getStatusLabel(selectedPart.status) }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="所属项目">{{ getProjectName(selectedPart.projectId) }}</el-descriptions-item>
+              <el-descriptions-item label="所属楼层">{{ getFloorName(selectedPart.floorId) }}</el-descriptions-item>
+              <el-descriptions-item label="2D坐标">
+                <template v-if="selectedPart.coordinates2D">
+                  <span class="coord-value">X: {{ selectedPart.coordinates2D.x.toFixed(1) }}, Y: {{ selectedPart.coordinates2D.y.toFixed(1) }}</span>
+                </template>
+                <template v-else>
+                  <el-tag type="danger" size="small">未设置</el-tag>
+                </template>
+              </el-descriptions-item>
+              <el-descriptions-item label="备注">{{ selectedPart.notes || selectedPart.description || '-' }}</el-descriptions-item>
+            </el-descriptions>
+          </el-tab-pane>
+
+          <!-- 安装教程标签页 -->
+          <el-tab-pane name="tutorial">
+            <template #label>
+              <span>
+                <el-icon style="vertical-align: middle; margin-right: 4px;"><Reading /></el-icon>
+                安装教程
+              </span>
             </template>
-            <template v-else>
-              <el-tag type="danger" size="small">未设置</el-tag>
-            </template>
-          </el-descriptions-item>
-          <el-descriptions-item label="备注">{{ selectedPart.notes || selectedPart.description || '-' }}</el-descriptions-item>
-        </el-descriptions>
+            <div v-loading="tutorialLoading" class="tutorial-content">
+              <!-- 教程内容 -->
+              <div v-if="tutorialContent" class="tutorial-render">
+                <div class="tutorial-type-badge">
+                  <el-tag type="primary" effect="dark" size="small">{{ selectedPart.type }}</el-tag>
+                </div>
+                <div class="tutorial-markdown" v-html="renderedTutorial"></div>
+              </div>
+              <!-- 空状态 -->
+              <div v-else-if="!tutorialLoading" class="tutorial-empty">
+                <el-empty description="暂无该类型的安装教程">
+                  <el-button type="primary" plain @click="$router.push('/manual')">
+                    前往技术百科查阅
+                  </el-button>
+                </el-empty>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
         
         <div class="dialog-actions-area" style="margin-top: 20px; text-align: center;">
           <el-button 
@@ -183,9 +216,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, type PropType } from 'vue'
+import { ref, computed, watch, type PropType } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, RefreshRight, Search, MapLocation, Reading } from '@element-plus/icons-vue'
+import { marked } from 'marked'
+import api from '../api'
 
 /**
  * 预埋件接口定义
@@ -276,6 +311,51 @@ const inspectionDialogVisible = ref(false)
 const selectedPart = ref<EmbeddedPart | null>(null)
 const inspectionNotes = ref('')
 const actionLoading = ref(false)
+
+// 安装教程相关状态
+const activeTab = ref('info')
+const tutorialLoading = ref(false)
+const tutorialContent = ref('')
+
+// 渲染Markdown教程内容
+const renderedTutorial = computed(() => {
+  if (!tutorialContent.value) return ''
+  return marked.parse(tutorialContent.value)
+})
+
+// 获取安装教程
+const fetchTutorial = async (partType: string) => {
+  if (!partType) {
+    tutorialContent.value = ''
+    return
+  }
+  tutorialLoading.value = true
+  try {
+    const categoryKey = `安装教程-${partType}`
+    const response = await api.manual.getManualsByCategory(categoryKey)
+    if (response && response.length > 0) {
+      // 合并多条教程内容
+      tutorialContent.value = response.map((m: any) => m.content).join('\n\n---\n\n')
+    } else {
+      tutorialContent.value = ''
+    }
+  } catch (error) {
+    console.error('获取安装教程失败:', error)
+    tutorialContent.value = ''
+  } finally {
+    tutorialLoading.value = false
+  }
+}
+
+// 对话框打开时的处理
+const handleDialogOpen = () => {
+  activeTab.value = 'info'
+  tutorialContent.value = ''
+  // 预加载教程内容
+  if (selectedPart.value?.type) {
+    fetchTutorial(selectedPart.value.type)
+  }
+}
 
 // 计算属性：过滤后的预埋件列表
 const filteredParts = computed(() => {
@@ -600,5 +680,85 @@ defineExpose({
 .dialog-actions-area {
   margin-top: 20px;
   text-align: center;
+}
+
+/* 安装教程样式 */
+.tutorial-content {
+  min-height: 250px;
+  max-height: 450px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.tutorial-render {
+  color: #303133;
+}
+
+.tutorial-type-badge {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #ebeef5;
+}
+
+.tutorial-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 250px;
+}
+
+/* Markdown渲染样式定制 */
+.tutorial-markdown :deep(h1), 
+.tutorial-markdown :deep(h2), 
+.tutorial-markdown :deep(h3) {
+  color: #409eff;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.tutorial-markdown :deep(h1) { font-size: 20px; }
+.tutorial-markdown :deep(h2) { font-size: 18px; }
+.tutorial-markdown :deep(h3) { font-size: 16px; }
+
+.tutorial-markdown :deep(p), 
+.tutorial-markdown :deep(li) {
+  line-height: 1.6;
+  color: #606266;
+  font-size: 14px;
+}
+
+.tutorial-markdown :deep(ul) {
+  padding-left: 20px;
+  margin: 10px 0;
+}
+
+.tutorial-markdown :deep(blockquote) {
+  border-left: 4px solid #409eff;
+  background-color: #f2f6fc;
+  padding: 10px 15px;
+  margin: 15px 0;
+  color: #909399;
+}
+
+.tutorial-markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  font-size: 13px;
+}
+
+.tutorial-markdown :deep(th), 
+.tutorial-markdown :deep(td) {
+  border: 1px solid #dcdfe6;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.tutorial-markdown :deep(th) {
+  background-color: #f5f7fa;
+  color: #606266;
+  font-weight: bold;
 }
 </style>

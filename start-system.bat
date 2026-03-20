@@ -74,7 +74,7 @@ echo.
 echo 4. Starting Frontend Service...
 cd /d "d:\code\yumaibao\frontend"
 start "Frontend Service" cmd /k "npm run dev"
-echo    Frontend service started at http://localhost:5173
+echo    Frontend service started at http://localhost:5175
 
 echo.
 echo =====================================

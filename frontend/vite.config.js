@@ -8,6 +8,7 @@ export default defineConfig({
   // 设置正确的公共路径，确保构建后的资源路径正确
   base: './',
   server: {
+    port: 5175,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

@@ -389,6 +389,9 @@ export default {
     searchManuals(keyword) {
       return api.get('/manuals/search', { params: { keyword } })
     },
+    getManualsByCategory(category) {
+      return api.get(`/manuals/category/${encodeURIComponent(category)}`)
+    },
     seedManuals() {
       return api.post('/manuals/seed')
     }

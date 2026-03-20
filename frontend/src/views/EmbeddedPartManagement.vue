@@ -279,7 +279,13 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="类型" prop="type">
-              <el-input v-model="embeddedPartForm.type" placeholder="请输入类型" />
+              <el-select v-model="embeddedPartForm.type" placeholder="选择类型" style="width: 100%">
+                <el-option label="平板式预埋件" value="平板式预埋件" />
+                <el-option label="槽式预埋件" value="槽式预埋件" />
+                <el-option label="螺栓式预埋件" value="螺栓式预埋件" />
+                <el-option label="构造式预埋件" value="构造式预埋件" />
+                <el-option label="特殊预埋件" value="特殊预埋件" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -462,7 +468,7 @@ export default {
       name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
       code: [{ required: true, message: '请输入编号', trigger: 'blur' }],
       modelNumber: [{ required: true, message: '请输入型号', trigger: 'blur' }],
-      type: [{ required: true, message: '请输入类型', trigger: 'blur' }],
+      type: [{ required: true, message: '请选择类型', trigger: 'change' }],
       location: [{ required: true, message: '请输入位置', trigger: 'blur' }],
       status: [{ required: true, message: '请选择状态', trigger: 'change' }]
     })
