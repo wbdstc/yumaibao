@@ -4,6 +4,14 @@ import EmbeddedPart from '../models/EmbeddedPart';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } from 'docx';
 import * as XLSX from 'xlsx';
 import puppeteer from 'puppeteer-core';
+import {
+  buildEmbeddedPartStatusReport,
+  buildProjectProgressReport,
+  exportReportFile,
+  type ExportableReport,
+  type ReportBuildFilters,
+  type ReportFormat
+} from '../services/reportExportService';
 
 // 扩展Express Request接口以包含user属性
 declare module 'express-serve-static-core' {
@@ -49,9 +57,70 @@ const getEmbeddedPartStatusRatio = (embeddedParts: any[], status: string) => {
 };
 
 class ReportController {
+  private static extractReportFilters(req: Request): ReportBuildFilters {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawDateRange = body.dateRange;
+
+    let startDate = typeof body.startDate === 'string' ? body.startDate : undefined;
+    let endDate = typeof body.endDate === 'string' ? body.endDate : undefined;
+
+    if (Array.isArray(rawDateRange)) {
+      startDate = startDate || rawDateRange[0];
+      endDate = endDate || rawDateRange[1];
+    } else if (rawDateRange && typeof rawDateRange === 'object') {
+      startDate = startDate || rawDateRange.startDate;
+      endDate = endDate || rawDateRange.endDate;
+    }
+
+    const queryProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    const queryFloorId = typeof req.query.floorId === 'string' ? req.query.floorId : undefined;
+    const queryStatus = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const queryStartDate = typeof req.query.startDate === 'string' ? req.query.startDate : undefined;
+    const queryEndDate = typeof req.query.endDate === 'string' ? req.query.endDate : undefined;
+
+    return {
+      projectId: req.params.projectId || body.projectId || queryProjectId,
+      floorId: body.floorId || queryFloorId,
+      status: body.status || queryStatus,
+      startDate: startDate || queryStartDate,
+      endDate: endDate || queryEndDate,
+      generatedBy: req.user?.userId
+    };
+  }
+
+  private static async loadReportScope(filters: ReportBuildFilters) {
+    const projectQuery = filters.projectId ? { id: filters.projectId } : {};
+    const partQuery: Record<string, string> = {};
+
+    if (filters.projectId) {
+      partQuery.projectId = filters.projectId;
+    }
+    if (filters.floorId) {
+      partQuery.floorId = filters.floorId;
+    }
+    if (filters.status) {
+      partQuery.status = filters.status;
+    }
+
+    const [projects, embeddedParts] = await Promise.all([
+      Project.findAll(projectQuery),
+      EmbeddedPart.findAll(partQuery)
+    ]);
+
+    return { projects, embeddedParts };
+  }
   // 生成项目进度报告
   static async generateProjectProgressReport(req: Request, res: Response) {
     try {
+      const reportFilters = this.extractReportFilters(req);
+      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+
+      if (reportFilters.projectId && reportProjects.length === 0) {
+        return res.status(404).json({ message: '项目不存在' });
+      }
+
+      const builtReport = buildProjectProgressReport(reportProjects as any[], reportParts as any[], reportFilters);
+      return res.status(200).json(builtReport);
         // 支持GET查询参数和POST请求体
         let projectId: string | undefined;
         let startDate: string | undefined;
@@ -77,8 +146,8 @@ class ReportController {
       if (projectId) query.projectId = projectId;
       if (startDate && endDate) {
         query.createdAt = {
-          $gte: new Date(startDate),
-          $lte: new Date(endDate)
+          $gte: new Date(startDate as string),
+          $lte: new Date(endDate as string)
         };
       }
 
@@ -124,6 +193,15 @@ class ReportController {
   // 生成预埋件状态报告
   static async generateEmbeddedPartStatusReport(req: Request, res: Response) {
     try {
+      const reportFilters = this.extractReportFilters(req);
+      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+
+      if (reportFilters.projectId && reportProjects.length === 0) {
+        return res.status(404).json({ message: '项目不存在' });
+      }
+
+      const builtReport = buildEmbeddedPartStatusReport(reportProjects as any[], reportParts as any[], reportFilters);
+      return res.status(200).json(builtReport);
       // 支持GET查询参数和POST请求体
       let projectId: string | undefined;
       let floorId: string | undefined;
@@ -173,6 +251,27 @@ class ReportController {
   // 生成项目报告文件（支持原有GET请求）
   static async generateProjectReportFile(req: Request, res: Response) {
     try {
+      const exportProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      const exportFormat = typeof req.query.format === 'string' ? (req.query.format as ReportFormat) : undefined;
+
+      if (!exportProjectId) {
+        return res.status(400).json({ message: '项目ID不能为空' });
+      }
+
+      if (!exportFormat || !['pdf', 'excel', 'word'].includes(exportFormat)) {
+        return res.status(400).json({ message: '不支持的报告格式' });
+      }
+
+      const reportFilters = this.extractReportFilters(req);
+      reportFilters.projectId = exportProjectId;
+      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+
+      if (reportProjects.length === 0) {
+        return res.status(404).json({ message: '项目不存在' });
+      }
+
+      const builtReport = buildProjectProgressReport(reportProjects as any[], reportParts as any[], reportFilters);
+      return exportReportFile(builtReport, exportFormat, res);
       const { projectId, format } = req.query;
       
       if (!projectId) {
@@ -870,6 +969,25 @@ class ReportController {
   // 生成报告文件（处理前端generateReportFile调用）
   static async generateReportFile(req: Request, res: Response) {
     try {
+      const { reportData: incomingReportData, format: exportFormat, reportContents } = req.body as {
+        reportData?: ExportableReport;
+        format?: ReportFormat;
+        reportContents?: string[];
+      };
+
+      if (!incomingReportData) {
+        return res.status(400).json({ message: '报告数据不能为空' });
+      }
+
+      if (!exportFormat || !['pdf', 'excel', 'word'].includes(exportFormat)) {
+        return res.status(400).json({ message: '不支持的报告格式' });
+      }
+
+      if (!incomingReportData.reportType || !incomingReportData.summary || !Array.isArray(incomingReportData.detailRows)) {
+        return res.status(400).json({ message: '报告数据格式不正确' });
+      }
+
+      return exportReportFile(incomingReportData, exportFormat, res, reportContents);
       const { reportData, format } = req.body;
       
       if (!reportData) {

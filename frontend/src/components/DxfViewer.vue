@@ -49,7 +49,19 @@
     </div>
     
     <!-- 坐标显示 -->
-    <div class="coord-display" v-if="showCoords">
+    <div
+      v-if="hoveredPartInfo?.part?.coordinates2D"
+      class="part-hover-tooltip"
+      :style="hoverTooltipStyle"
+    >
+      <div class="part-hover-tooltip__title">
+        {{ hoveredPartInfo.part.name || hoveredPartInfo.part.code || 'Part' }}
+      </div>
+      <div>{{ hoveredPartInfo.xText }}</div>
+      <div>{{ hoveredPartInfo.yText }}</div>
+    </div>
+
+    <div class="coord-display" v-if="showCoords && isCanvasHovered">
       X: {{ mouseCoord.x.toFixed(1) }} | Y: {{ mouseCoord.y.toFixed(1) }}
     </div>
   </div>
@@ -123,10 +135,21 @@ const axisLabels = shallowRef([])
 const loading = ref(false)
 const showAxisAnnotations = ref(true)
 const mouseCoord = ref({ x: 0, y: 0 })
+const isCanvasHovered = ref(false)
+const hoveredPartInfo = ref(null)
 const encoding = ref('gb18030')
 
 const currentEncodingLabel = computed(() => {
   return encoding.value === 'gb18030' ? 'GBK' : 'UTF-8'
+})
+
+const hoverTooltipStyle = computed(() => {
+  if (!hoveredPartInfo.value) return {}
+
+  return {
+    left: `${hoveredPartInfo.value.x}px`,
+    top: `${hoveredPartInfo.value.y}px`
+  }
 })
 
 // 对象组
@@ -134,6 +157,12 @@ let dxfGroup = null
 let annotationGroup = null
 let embeddedPartsGroup = null
 let axisLabelGroup = null
+const hoverProjection = new THREE.Vector3()
+
+const PART_PICK_RADIUS_PX = 16
+const PART_TOOLTIP_WIDTH = 220
+const PART_TOOLTIP_HEIGHT = 88
+const PART_TOOLTIP_OFFSET = 16
 
 // 视图范围
 let viewDims = { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } }
@@ -239,6 +268,7 @@ const initThreeJs = () => {
   
   // 鼠标事件
   canvas.addEventListener('mousemove', handleMouseMove)
+  canvas.addEventListener('mouseleave', handleMouseLeave)
   canvas.addEventListener('click', handleClick)
   
   // 监听 OrbitControls 的 change 事件，滚轮缩放/拖拽时同步更新坐标
@@ -364,7 +394,9 @@ const cleanup = () => {
     canvasRef.value.removeEventListener('webglcontextlost', handleContextLost)
     canvasRef.value.removeEventListener('webglcontextrestored', handleContextRestored)
     canvasRef.value.removeEventListener('mousemove', handleMouseMove)
+    canvasRef.value.removeEventListener('mouseleave', handleMouseLeave)
     canvasRef.value.removeEventListener('click', handleClick)
+    canvasRef.value.style.cursor = 'default'
   }
   
   // 移除 OrbitControls 事件
@@ -392,6 +424,8 @@ const cleanup = () => {
   annotationGroup = null
   embeddedPartsGroup = null
   axisLabelGroup = null
+  hoveredPartInfo.value = null
+  isCanvasHovered.value = false
   
   console.log('✅ DxfViewer资源清理完成')
 }
@@ -1553,14 +1587,23 @@ const updateEmbeddedParts = () => {
     
     embeddedPartsGroup.add(mesh)
   })
+
+  if (
+    hoveredPartInfo.value &&
+    !props.embeddedParts.some(part => part.id === hoveredPartInfo.value.part?.id && part.coordinates2D)
+  ) {
+    clearHoveredPartInfo()
+  }
 }
 
 const updateAnnotations = () => {
-  if (!annotationGroup || !showAxisAnnotations.value) return
+  if (!annotationGroup) return
   
   while (annotationGroup.children.length > 0) {
     annotationGroup.remove(annotationGroup.children[0])
   }
+
+  return
   
   if (axisLines.value.length === 0) return
   
@@ -1706,6 +1749,81 @@ const drawLeaderAnnotation = (px, py, dx, dy, distReal, axisName, direction) => 
   sprite.scale.set(spriteW, spriteH, 1)
 
   annotationGroup.add(sprite)
+}
+
+const getValidAxisLabels = () => {
+  return axisLabels.value.filter(label => {
+    const text = label.text.trim()
+    if (text.length === 0 || text.length > 5) return false
+    if (/^\d+$/.test(text) && parseInt(text, 10) > 999) return false
+    return true
+  })
+}
+
+const findAxisLabelForLine = (axisLine, validAxisLabels) => {
+  if (!axisLine || validAxisLabels.length === 0) return ''
+
+  let bestLabel = ''
+  let bestDist = Infinity
+
+  validAxisLabels.forEach(label => {
+    const dist = axisLine.isHorizontal
+      ? Math.abs(label.position.y - axisLine.position)
+      : Math.abs(label.position.x - axisLine.position)
+
+    if (dist < bestDist) {
+      bestDist = dist
+      bestLabel = label.text
+    }
+  })
+
+  return bestLabel
+}
+
+const formatAxisDistanceText = (direction, axisName, distance) => {
+  const distText = Math.round(distance)
+  return axisName
+    ? `${direction}→轴${axisName}: ${distText}mm`
+    : `${direction}: ${distText}mm`
+}
+
+const getPartAxisDistanceTexts = (part) => {
+  if (!part?.coordinates2D) {
+    return { xText: 'X: -', yText: 'Y: -' }
+  }
+
+  const vLines = axisLines.value.filter(line => !line.isHorizontal)
+  const hLines = axisLines.value.filter(line => line.isHorizontal)
+  const validAxisLabels = getValidAxisLabels()
+
+  const offsetX = worldOffset.x || 0
+  const offsetY = worldOffset.y || 0
+  const scale = worldOffset.scale || 1
+  const px = (part.coordinates2D.x - offsetX) * scale
+  const py = (part.coordinates2D.y - offsetY) * scale
+
+  let xText = 'X: 未检测到轴线'
+  let yText = 'Y: 未检测到轴线'
+
+  if (vLines.length > 0) {
+    const nearestVLine = vLines.reduce((prev, curr) =>
+      Math.abs(curr.position - px) < Math.abs(prev.position - px) ? curr : prev
+    )
+    const axisName = findAxisLabelForLine(nearestVLine, validAxisLabels)
+    const distReal = Math.abs(px - nearestVLine.position) / scale
+    xText = formatAxisDistanceText('X', axisName, distReal)
+  }
+
+  if (hLines.length > 0) {
+    const nearestHLine = hLines.reduce((prev, curr) =>
+      Math.abs(curr.position - py) < Math.abs(prev.position - py) ? curr : prev
+    )
+    const axisName = findAxisLabelForLine(nearestHLine, validAxisLabels)
+    const distReal = Math.abs(py - nearestHLine.position) / scale
+    yText = formatAxisDistanceText('Y', axisName, distReal)
+  }
+
+  return { xText, yText }
 }
 
 const renderAxisLabels = () => {
@@ -2019,15 +2137,96 @@ const screenToWorld = (clientX, clientY) => {
 let lastMouseClientX = 0
 let lastMouseClientY = 0
 
+const clearHoveredPartInfo = () => {
+  hoveredPartInfo.value = null
+
+  if (canvasRef.value) {
+    canvasRef.value.style.cursor = 'default'
+  }
+}
+
+const setHoveredPartInfo = (part, clientX, clientY) => {
+  if (!containerRef.value || !part?.coordinates2D) {
+    clearHoveredPartInfo()
+    return
+  }
+
+  const rect = containerRef.value.getBoundingClientRect()
+  const maxLeft = Math.max(PART_TOOLTIP_OFFSET, rect.width - PART_TOOLTIP_WIDTH - 8)
+  const maxTop = Math.max(PART_TOOLTIP_OFFSET, rect.height - PART_TOOLTIP_HEIGHT - 8)
+  const { xText, yText } = getPartAxisDistanceTexts(part)
+
+  hoveredPartInfo.value = {
+    part,
+    xText,
+    yText,
+    x: Math.min(Math.max(clientX - rect.left + PART_TOOLTIP_OFFSET, PART_TOOLTIP_OFFSET), maxLeft),
+    y: Math.min(Math.max(clientY - rect.top + PART_TOOLTIP_OFFSET, PART_TOOLTIP_OFFSET), maxTop)
+  }
+
+  if (canvasRef.value) {
+    canvasRef.value.style.cursor = 'pointer'
+  }
+}
+
+const findEmbeddedPartAt = (clientX, clientY) => {
+  if (!camera || !containerRef.value || !embeddedPartsGroup?.children?.length) {
+    return null
+  }
+
+  const rect = containerRef.value.getBoundingClientRect()
+  let nearestPart = null
+  let nearestDistance = PART_PICK_RADIUS_PX
+
+  embeddedPartsGroup.children.forEach(child => {
+    const part = child.userData?.part
+    if (!part?.coordinates2D) return
+
+    child.getWorldPosition(hoverProjection)
+    hoverProjection.project(camera)
+
+    if (hoverProjection.z < -1 || hoverProjection.z > 1) return
+
+    const screenX = ((hoverProjection.x + 1) / 2) * rect.width + rect.left
+    const screenY = ((1 - hoverProjection.y) / 2) * rect.height + rect.top
+    const distance = Math.hypot(screenX - clientX, screenY - clientY)
+
+    if (distance <= nearestDistance) {
+      nearestDistance = distance
+      nearestPart = part
+    }
+  })
+
+  return nearestPart
+}
+
 const handleMouseMove = (event) => {
   // 缓存鼠标位置
   lastMouseClientX = event.clientX
   lastMouseClientY = event.clientY
-  
+  isCanvasHovered.value = true
+
   const coord = screenToWorld(event.clientX, event.clientY)
   if (coord) {
     mouseCoord.value = coord
   }
+
+  if (!showAxisAnnotations.value) {
+    clearHoveredPartInfo()
+    return
+  }
+
+  const hoveredPart = findEmbeddedPartAt(event.clientX, event.clientY)
+  if (hoveredPart) {
+    setHoveredPartInfo(hoveredPart, event.clientX, event.clientY)
+  } else {
+    clearHoveredPartInfo()
+  }
+}
+
+const handleMouseLeave = () => {
+  isCanvasHovered.value = false
+  clearHoveredPartInfo()
 }
 
 /**
@@ -2039,6 +2238,18 @@ const handleControlsChange = () => {
   const coord = screenToWorld(lastMouseClientX, lastMouseClientY)
   if (coord) {
     mouseCoord.value = coord
+  }
+
+  if (!showAxisAnnotations.value) {
+    clearHoveredPartInfo()
+    return
+  }
+
+  const hoveredPart = findEmbeddedPartAt(lastMouseClientX, lastMouseClientY)
+  if (hoveredPart) {
+    setHoveredPartInfo(hoveredPart, lastMouseClientX, lastMouseClientY)
+  } else {
+    clearHoveredPartInfo()
   }
 }
 
@@ -2054,6 +2265,12 @@ const handleClick = (event) => {
   if (worldCoord) {
     // 触发画布点击事件（真实DXF坐标）
     emit('canvas-click', { x: worldCoord.x, y: worldCoord.y })
+  }
+
+  const hoveredPart = findEmbeddedPartAt(event.clientX, event.clientY)
+  if (hoveredPart) {
+    emit('part-click', hoveredPart)
+    return
   }
   
   const raycaster = new THREE.Raycaster()
@@ -2089,6 +2306,12 @@ const toggleAxisAnnotations = () => {
   if (showAxisAnnotations.value) {
     updateAnnotations()
     renderAxisLabels()
+    if (lastMouseClientX !== 0 || lastMouseClientY !== 0) {
+      const hoveredPart = findEmbeddedPartAt(lastMouseClientX, lastMouseClientY)
+      if (hoveredPart) {
+        setHoveredPartInfo(hoveredPart, lastMouseClientX, lastMouseClientY)
+      }
+    }
   } else {
     while (annotationGroup.children.length > 0) {
       annotationGroup.remove(annotationGroup.children[0])
@@ -2096,6 +2319,7 @@ const toggleAxisAnnotations = () => {
     while (axisLabelGroup.children.length > 0) {
       axisLabelGroup.remove(axisLabelGroup.children[0])
     }
+    clearHoveredPartInfo()
   }
 }
 
@@ -2185,5 +2409,27 @@ defineExpose({
   font-family: monospace;
   font-size: 12px;
   z-index: 10;
+}
+
+.part-hover-tooltip {
+  position: absolute;
+  min-width: 160px;
+  padding: 10px 12px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.part-hover-tooltip__title {
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: #93c5fd;
 }
 </style>

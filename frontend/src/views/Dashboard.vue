@@ -942,10 +942,89 @@ export default {
     const generateReport = () => {
       reportDialogVisible.value = true
     }
+
+    const sanitizeFileName = (value = 'report') => value.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')
+
+    const getProjectNameById = (projectId) => {
+      const project = projects.value.find(item => item.id === projectId)
+      return project?.name || 'report'
+    }
+
+    const buildReportFileName = (reportData, format, projectId) => {
+      const projectName = reportData?.filters?.projectName || getProjectNameById(projectId)
+      const reportType = reportData?.reportType === 'embedded-parts-status' ? 'embedded-part-status' : 'project-progress'
+      return `${sanitizeFileName(projectName)}_${reportType}_${new Date().getTime()}.${getExtension(format)}`
+    }
+
+    const downloadReportBlob = (fileResponse, format, reportData, projectId) => {
+      const blob = new Blob([fileResponse], { type: getBlobType(format) })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = buildReportFileName(reportData, format, projectId)
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    }
+
+    const fetchReportData = async (projectId, reportType, reportContents = []) => {
+      if (reportType === 'project-progress') {
+        return api.report.generateProjectReport(projectId, {
+          projectId,
+          startDate: dateRange.value[0],
+          endDate: dateRange.value[1],
+          reportContents
+        })
+      }
+
+      return api.report.generateEmbeddedPartReport({
+        projectId,
+        startDate: dateRange.value[0],
+        endDate: dateRange.value[1],
+        status: reportForm.selectedStatus,
+        reportContents
+      })
+    }
     
     // 提交报告生成
     const submitReport = async () => {
       try {
+        if (!reportForm.selectedProject) {
+          ElMessage.warning('请先选择一个项目')
+          return
+        }
+
+        if (!reportForm.reportFormats.length) {
+          ElMessage.warning('请至少选择一种导出格式')
+          return
+        }
+
+        reportLoading.value = true
+
+        const exportedReport = await fetchReportData(
+          reportForm.selectedProject,
+          reportForm.reportType,
+          reportForm.reportContents
+        )
+
+        if (!exportedReport || !exportedReport.title || !exportedReport.reportType) {
+          ElMessage.error('报告生成失败')
+          return
+        }
+
+        for (const format of reportForm.reportFormats) {
+          const fileResponse = await api.report.generateReportFile(
+            exportedReport,
+            format,
+            reportForm.reportContents
+          )
+          downloadReportBlob(fileResponse, format, exportedReport, reportForm.selectedProject)
+        }
+
+        ElMessage.success(`报告导出成功，已生成 ${reportForm.reportFormats.length} 个文件`)
+        reportDialogVisible.value = false
+        return
         // 验证是否选择了项目
         if (!reportForm.selectedProject) {
           ElMessage.warning('请先选择一个项目')
@@ -1006,6 +1085,29 @@ export default {
     // 生成项目报告
     const generateProjectReport = async (project) => {
       try {
+        reportLoading.value = true
+
+        const exportedReport = await api.report.generateProjectReport(project.id, {
+          projectId: project.id,
+          startDate: dateRange.value[0],
+          endDate: dateRange.value[1]
+        })
+
+        if (!exportedReport || !exportedReport.title || !exportedReport.reportType) {
+          ElMessage.error('项目报告生成失败')
+          return
+        }
+
+        const fileResponse = await api.report.generateReportFile(
+          exportedReport,
+          'pdf',
+          ['统计图表', '详细数据', '分析总结']
+        )
+        downloadReportBlob(fileResponse, 'pdf', exportedReport, project.id)
+
+        ElMessage.success('项目报告导出成功')
+        return
+
         reportLoading.value = true
         
         // 生成项目进度报告

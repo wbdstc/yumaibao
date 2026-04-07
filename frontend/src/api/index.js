@@ -299,6 +299,12 @@ export default {
     batchDeleteEmbeddedParts(ids) {
       return api.post('/embedded-parts/batch/delete', { ids })
     },
+    getEmbeddedPartsByProject(projectId, params = {}) {
+      return api.get(`/embedded-parts/project/${projectId}`, { params })
+    },
+    getEmbeddedPartsByFloor(projectId, floorId) {
+      return api.get(`/embedded-parts/project/${projectId}/floor/${floorId}`)
+    },
     generateQRCode(id) {
       return api.get(`/embedded-parts/${id}/qrcode`, { responseType: 'blob' })
     }
@@ -382,16 +388,16 @@ export default {
   // 报告生成相关API
   report: {
     // 生成项目进度报告
-    generateProjectReport(projectId, dateRange) {
-      return api.post(`/reports/project-progress/${projectId}`, { dateRange })
+    generateProjectReport(projectId, filters = {}) {
+      return api.post(`/reports/project-progress/${projectId}`, filters)
     },
     // 生成预埋件状态报告
     generateEmbeddedPartReport(filters) {
       return api.post('/reports/embedded-parts-status', filters)
     },
     // 生成报告文件
-    generateReportFile(reportData, format) {
-      return api.post('/reports/generate-file', { reportData, format }, {
+    generateReportFile(reportData, format, reportContents = []) {
+      return api.post('/reports/generate-file', { reportData, format, reportContents }, {
         responseType: 'blob' // 重要：设置响应类型为blob以接收文件
       })
     }

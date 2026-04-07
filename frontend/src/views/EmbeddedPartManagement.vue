@@ -628,7 +628,9 @@ export default {
         console.log('当前搜索关键词:', searchForm.keyword)
         
         // 构建搜索参数
-        const searchParams = {}
+        const searchParams = {
+          limit: 10000
+        }
         
         // 必填：项目ID
         if (searchForm.projectId) {
@@ -674,8 +676,8 @@ export default {
           if (Array.isArray(response.data)) {
             responseData = response.data
             pagination.total = response.total || responseData.length
-            pagination.currentPage = response.currentPage || 1
-            pagination.pages = response.pages || Math.ceil((response.total || 0) / pagination.pageSize)
+            pagination.currentPage = 1
+            pagination.pages = Math.ceil(pagination.total / pagination.pageSize)
           } else if (Array.isArray(response)) {
             // 兼容直接返回数组的格式
             responseData = response

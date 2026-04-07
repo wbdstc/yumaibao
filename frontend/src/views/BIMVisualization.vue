@@ -438,10 +438,12 @@ const getModels = async (projectId: string, floorId?: string) => {
 const getEmbeddedParts = async (projectId: string, floorId?: string) => {
   try {
     // 始终传 projectId，可选传 floorId
-    const params: any = { projectId }
-    if (floorId) params.floorId = floorId
-    const response = await api.embeddedPart.getEmbeddedParts(params)
-    const data = response.data || (Array.isArray(response) ? response : [])
+    const response = floorId
+      ? await api.embeddedPart.getEmbeddedPartsByFloor(projectId, floorId)
+      : await api.embeddedPart.getEmbeddedPartsByProject(projectId)
+    const data = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.data) ? response.data : [])
     // 过滤掉没有 projectId 的孤儿预埋件
     embeddedParts.value = Array.isArray(data) 
       ? data.filter((p: any) => p.projectId) 
