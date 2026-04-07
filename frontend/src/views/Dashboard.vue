@@ -1,5 +1,48 @@
 <template>
   <div class="dashboard-container page-transition blueprint-bg">
+    <section class="overview-panel surface-panel">
+      <div class="overview-copy">
+        <p class="section-kicker">Overview</p>
+        <h2>欢迎回来，{{ userStore.userInfo?.name || '用户' }}</h2>
+        <p class="overview-subtitle">
+          聚焦项目推进、预埋件状态和现场扫码动态，先判断今天最需要处理的风险点。
+        </p>
+
+        <div class="overview-metrics">
+          <div class="overview-metric">
+            <span class="overview-metric-value">{{ projectStats.activeProjects }}</span>
+            <span class="overview-metric-label">进行中项目</span>
+          </div>
+          <div class="overview-metric">
+            <span class="overview-metric-value">{{ embeddedPartStats.pendingParts }}</span>
+            <span class="overview-metric-label">待安装构件</span>
+          </div>
+          <div class="overview-metric">
+            <span class="overview-metric-value">{{ embeddedPartStats.overdueInstall + embeddedPartStats.overdueInspect }}</span>
+            <span class="overview-metric-label">超时事项</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="overview-side">
+        <div class="overview-side-row">
+          <div class="risk-pill">
+            <span>超时安装</span>
+            <strong>{{ embeddedPartStats.overdueInstall }}</strong>
+          </div>
+          <div class="risk-pill risk-pill-warning">
+            <span>超时验收</span>
+            <strong>{{ embeddedPartStats.overdueInspect }}</strong>
+          </div>
+        </div>
+        <div class="overview-side-row">
+          <el-button type="primary" @click="generateReport" icon="DocumentCopy">
+            生成报告
+          </el-button>
+          <el-button plain @click="navigateToProjects">查看项目</el-button>
+        </div>
+      </div>
+    </section>
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
@@ -1624,6 +1667,384 @@ export default {
   .el-button--small {
     padding: 4px 8px;
     font-size: 12px;
+  }
+}
+
+.overview-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 360px);
+  gap: 28px;
+  padding: 30px;
+  margin-bottom: 22px;
+}
+
+.overview-copy h2 {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--app-text);
+}
+
+.overview-subtitle {
+  max-width: 700px;
+  margin: 16px 0 0;
+  color: var(--app-text-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.overview-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.overview-metric {
+  min-width: 148px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(128, 145, 170, 0.14);
+}
+
+.overview-metric-value {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--app-text);
+}
+
+.overview-metric-label {
+  display: block;
+  margin-top: 6px;
+  color: var(--app-text-soft);
+  font-size: 0.88rem;
+}
+
+.overview-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overview-side-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.risk-pill {
+  flex: 1;
+  min-width: 132px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.12);
+}
+
+.risk-pill span {
+  display: block;
+  color: #b45309;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.risk-pill strong {
+  display: block;
+  margin-top: 8px;
+  color: #b91c1c;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.risk-pill-warning {
+  background: rgba(217, 119, 6, 0.09);
+  border-color: rgba(217, 119, 6, 0.14);
+}
+
+.risk-pill-warning strong {
+  color: #b45309;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+  padding: 22px 24px;
+  border: 1px solid rgba(128, 145, 170, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.page-header::after {
+  display: none;
+}
+
+.page-header h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  color: var(--app-text);
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--app-text-soft);
+}
+
+.header-actions {
+  gap: 12px;
+}
+
+.stats-cards {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  border: 1px solid rgba(128, 145, 170, 0.14);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(246, 249, 252, 0.88) 100%);
+  box-shadow: 0 14px 36px rgba(16, 34, 60, 0.08);
+}
+
+.stat-card::before {
+  display: none;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(37, 99, 235, 0.16);
+}
+
+.stat-content {
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.stat-value {
+  margin-bottom: 0;
+  color: var(--app-text);
+  font-size: 2rem;
+  letter-spacing: -0.05em;
+}
+
+.stat-label {
+  margin-top: 10px;
+  color: var(--app-text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.stat-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  flex-shrink: 0;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.section-intro {
+  margin-bottom: 14px;
+}
+
+.section-intro h3,
+.section-header h3,
+.card-header h3 {
+  margin: 0;
+  font-size: 1.18rem;
+  color: var(--app-text);
+}
+
+.charts-section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.chart-card,
+.content-card,
+.dashboard-card {
+  border: 1px solid rgba(128, 145, 170, 0.14);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 250, 253, 0.88) 100%);
+}
+
+.chart-card::before {
+  display: none;
+}
+
+.chart-header {
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.chart-header p {
+  margin: 8px 0 0;
+  color: var(--app-text-soft);
+  font-size: 0.88rem;
+}
+
+.chart-container {
+  padding: 12px 20px 20px;
+}
+
+.dashboard-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dashboard-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.projects-section {
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.section-header {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.card-header {
+  align-items: flex-start;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.recent-projects {
+  gap: 10px;
+}
+
+.project-item {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(128, 145, 170, 0.12);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.project-item::before {
+  display: none;
+}
+
+.project-item:hover {
+  transform: translateY(-2px);
+}
+
+.project-item h4 {
+  margin: 0 0 8px;
+  color: var(--app-text);
+}
+
+.project-description {
+  color: var(--app-text-muted);
+}
+
+.project-date,
+.scan-details {
+  color: var(--app-text-soft);
+}
+
+.recent-scans {
+  max-height: 500px;
+}
+
+.scan-record {
+  gap: 14px;
+}
+
+.scan-action {
+  color: var(--app-text);
+  font-weight: 600;
+}
+
+.empty-state {
+  padding: 32px 0;
+  color: var(--app-text-soft);
+}
+
+.empty-icon {
+  color: rgba(128, 145, 170, 0.36);
+}
+
+@media (max-width: 1200px) {
+  .overview-panel,
+  .dashboard-grid,
+  .dashboard-content,
+  .charts-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .overview-panel {
+    padding: 20px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    padding: 0;
+  }
+
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .chart {
+    height: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .overview-side-row {
+    flex-direction: column;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .chart {
+    height: 220px;
   }
 }
 </style>

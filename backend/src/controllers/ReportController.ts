@@ -16,6 +16,38 @@ declare module 'express-serve-static-core' {
   }
 }
 
+const EMBEDDED_PART_STATUS_LABELS: Record<string, string> = {
+  pending: '待安装',
+  installed: '已安装',
+  inspected: '已验收',
+  rejected: '已拒绝',
+  completed: '已完成'
+};
+
+const getEmbeddedPartStatusLabel = (status?: string) =>
+  EMBEDDED_PART_STATUS_LABELS[status || ''] || '未知';
+
+const getEmbeddedPartCode = (part: any) => part.code || part.identifier || '';
+
+const getCoordinateValue = (coordinates: any, axis: 'x' | 'y' | 'z') => {
+  if (!coordinates || coordinates[axis] === undefined || coordinates[axis] === null) {
+    return '';
+  }
+
+  return coordinates[axis];
+};
+
+const getEmbeddedPartStatusCount = (embeddedParts: any[], status: string) =>
+  embeddedParts.filter(part => part.status === status).length;
+
+const getEmbeddedPartStatusRatio = (embeddedParts: any[], status: string) => {
+  if (embeddedParts.length === 0) {
+    return '0%';
+  }
+
+  return `${((getEmbeddedPartStatusCount(embeddedParts, status) / embeddedParts.length) * 100).toFixed(2)}%`;
+};
+
 class ReportController {
   // 生成项目进度报告
   static async generateProjectProgressReport(req: Request, res: Response) {
@@ -197,9 +229,11 @@ class ReportController {
       const statsInfo = [
         ['状态', '数量'],
         ['总数', embeddedParts.length],
-        ['待安装', embeddedParts.filter(p => p.status === 'pending').length],
-        ['已安装', embeddedParts.filter(p => p.status === 'installed').length],
-        ['已验收', embeddedParts.filter(p => p.status === 'inspected').length]
+        ['待安装', getEmbeddedPartStatusCount(embeddedParts, 'pending')],
+        ['已安装', getEmbeddedPartStatusCount(embeddedParts, 'installed')],
+        ['已验收', getEmbeddedPartStatusCount(embeddedParts, 'inspected')],
+        ['已拒绝', getEmbeddedPartStatusCount(embeddedParts, 'rejected')],
+        ['已完成', getEmbeddedPartStatusCount(embeddedParts, 'completed')]
       ];
       const statsSheet = XLSX.utils.aoa_to_sheet(statsInfo);
       XLSX.utils.book_append_sheet(workbook, statsSheet, '状态统计');
@@ -209,12 +243,12 @@ class ReportController {
         '预埋件ID': part.id,
         '项目ID': part.projectId,
         '楼层ID': part.floorId,
-        '标识符': part.identifier,
+        '编号': getEmbeddedPartCode(part),
         '类型': part.type,
-        '状态': part.status === 'pending' ? '待安装' : part.status === 'installed' ? '已安装' : part.status === 'inspected' ? '已验收' : '未知',
-        'X坐标': part.coordinates.x,
-        'Y坐标': part.coordinates.y,
-        'Z坐标': part.coordinates.z,
+        '状态': getEmbeddedPartStatusLabel(part.status),
+        'X坐标': getCoordinateValue(part.coordinates, 'x'),
+        'Y坐标': getCoordinateValue(part.coordinates, 'y'),
+        'Z坐标': getCoordinateValue(part.coordinates, 'z'),
         '创建时间': new Date(part.createdAt).toLocaleString('zh-CN'),
         '更新时间': new Date(part.updatedAt).toLocaleString('zh-CN')
       }));
@@ -420,7 +454,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.filter(p => p.status === 'pending').length.toString())],
+                        children: [new Paragraph(getEmbeddedPartStatusCount(embeddedParts, 'pending').toString())],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -429,7 +463,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'pending').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%')],
+                        children: [new Paragraph(getEmbeddedPartStatusRatio(embeddedParts, 'pending'))],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -451,7 +485,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.filter(p => p.status === 'installed').length.toString())],
+                        children: [new Paragraph(getEmbeddedPartStatusCount(embeddedParts, 'installed').toString())],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -460,7 +494,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'installed').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%')],
+                        children: [new Paragraph(getEmbeddedPartStatusRatio(embeddedParts, 'installed'))],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -482,7 +516,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.filter(p => p.status === 'inspected').length.toString())],
+                        children: [new Paragraph(getEmbeddedPartStatusCount(embeddedParts, 'inspected').toString())],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -491,7 +525,69 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'inspected').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%')],
+                        children: [new Paragraph(getEmbeddedPartStatusRatio(embeddedParts, 'inspected'))],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                    ],
+                  }),
+                  new TableRow({
+                    children: [
+                      new TableCell({
+                        children: [new Paragraph('已拒绝')],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                      new TableCell({
+                        children: [new Paragraph(getEmbeddedPartStatusCount(embeddedParts, 'rejected').toString())],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                      new TableCell({
+                        children: [new Paragraph(getEmbeddedPartStatusRatio(embeddedParts, 'rejected'))],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                    ],
+                  }),
+                  new TableRow({
+                    children: [
+                      new TableCell({
+                        children: [new Paragraph('已完成')],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                      new TableCell({
+                        children: [new Paragraph(getEmbeddedPartStatusCount(embeddedParts, 'completed').toString())],
+                        borders: {
+                          top: { style: BorderStyle.SINGLE, size: 1 },
+                          left: { style: BorderStyle.SINGLE, size: 1 },
+                          right: { style: BorderStyle.SINGLE, size: 1 },
+                          bottom: { style: BorderStyle.SINGLE, size: 1 },
+                        },
+                      }),
+                      new TableCell({
+                        children: [new Paragraph(getEmbeddedPartStatusRatio(embeddedParts, 'completed'))],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -526,7 +622,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph('标识符')],
+                        children: [new Paragraph('编号')],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -566,7 +662,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(part.identifier)],
+                        children: [new Paragraph(getEmbeddedPartCode(part))],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -584,7 +680,7 @@ class ReportController {
                         },
                       }),
                       new TableCell({
-                        children: [new Paragraph(part.status === 'pending' ? '待安装' : part.status === 'installed' ? '已安装' : part.status === 'inspected' ? '已验收' : '未知')],
+                        children: [new Paragraph(getEmbeddedPartStatusLabel(part.status))],
                         borders: {
                           top: { style: BorderStyle.SINGLE, size: 1 },
                           left: { style: BorderStyle.SINGLE, size: 1 },
@@ -693,18 +789,28 @@ class ReportController {
             </tr>
             <tr>
               <td>待安装</td>
-              <td>${embeddedParts.filter(p => p.status === 'pending').length}</td>
-              <td>${embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'pending').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%'}</td>
+              <td>${getEmbeddedPartStatusCount(embeddedParts, 'pending')}</td>
+              <td>${getEmbeddedPartStatusRatio(embeddedParts, 'pending')}</td>
             </tr>
             <tr>
               <td>已安装</td>
-              <td>${embeddedParts.filter(p => p.status === 'installed').length}</td>
-              <td>${embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'installed').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%'}</td>
+              <td>${getEmbeddedPartStatusCount(embeddedParts, 'installed')}</td>
+              <td>${getEmbeddedPartStatusRatio(embeddedParts, 'installed')}</td>
             </tr>
             <tr>
               <td>已验收</td>
-              <td>${embeddedParts.filter(p => p.status === 'inspected').length}</td>
-              <td>${embeddedParts.length > 0 ? `${((embeddedParts.filter(p => p.status === 'inspected').length / embeddedParts.length) * 100).toFixed(2)}%` : '0%'}</td>
+              <td>${getEmbeddedPartStatusCount(embeddedParts, 'inspected')}</td>
+              <td>${getEmbeddedPartStatusRatio(embeddedParts, 'inspected')}</td>
+            </tr>
+            <tr>
+              <td>已拒绝</td>
+              <td>${getEmbeddedPartStatusCount(embeddedParts, 'rejected')}</td>
+              <td>${getEmbeddedPartStatusRatio(embeddedParts, 'rejected')}</td>
+            </tr>
+            <tr>
+              <td>已完成</td>
+              <td>${getEmbeddedPartStatusCount(embeddedParts, 'completed')}</td>
+              <td>${getEmbeddedPartStatusRatio(embeddedParts, 'completed')}</td>
             </tr>
           </table>
           
@@ -712,16 +818,16 @@ class ReportController {
           <table>
             <tr>
               <th>ID</th>
-              <th>标识符</th>
+              <th>编号</th>
               <th>类型</th>
               <th>状态</th>
             </tr>
             ${embeddedParts.map(part => `
               <tr>
                 <td>${part.id}</td>
-                <td>${part.identifier}</td>
+                <td>${getEmbeddedPartCode(part)}</td>
                 <td>${part.type}</td>
-                <td>${part.status === 'pending' ? '待安装' : part.status === 'installed' ? '已安装' : part.status === 'inspected' ? '已验收' : '未知'}</td>
+                <td>${getEmbeddedPartStatusLabel(part.status)}</td>
               </tr>
             `).join('')}
           </table>

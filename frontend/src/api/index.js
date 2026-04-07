@@ -19,6 +19,17 @@ const TIMEOUT_CONFIG = {
   download: 120000    // 文件下载2分钟
 }
 
+const AUTH_MESSAGE_URLS = ['/users/login', '/users/register']
+
+const getServerErrorMessage = error => {
+  const message = error?.response?.data?.message
+  return typeof message === 'string' ? message : ''
+}
+
+const isAuthMessageRequest = url => {
+  return AUTH_MESSAGE_URLS.some(path => typeof url === 'string' && url.includes(path))
+}
+
 // 请求拦截器 - 【已修复】
 api.interceptors.request.use(
   config => {
@@ -78,6 +89,13 @@ api.interceptors.response.use(
       console.error('响应拦截器：错误响应数据', error.response.data)
 
       let errorMessage = '请求失败，请稍后重试'
+      const requestUrl = error.config?.url || ''
+      const serverErrorMessage = getServerErrorMessage(error)
+
+      if (isAuthMessageRequest(requestUrl) && error.response.status >= 400 && error.response.status < 500) {
+        ElMessage.error(serverErrorMessage || '输入信息有误，请检查后重试')
+        return Promise.reject(error)
+      }
 
       switch (error.response.status) {
         case 401:

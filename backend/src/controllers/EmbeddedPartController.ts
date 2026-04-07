@@ -11,6 +11,31 @@ import { uploadFileToMinIO, deleteFileFromMinIO, downloadFileFromMinIO } from '.
 import { MINIO_BUCKETS } from '../config/minio';
 
 class EmbeddedPartController {
+  private static normalizeOptionalNumber(value: unknown): number | undefined {
+    if (value === '' || value === null || value === undefined) {
+      return undefined;
+    }
+
+    const normalized = Number(value);
+    return Number.isFinite(normalized) ? normalized : undefined;
+  }
+
+  private static normalizeStatus(value: unknown): EmbeddedPartCreationAttributes['status'] {
+    const allowedStatuses: NonNullable<EmbeddedPartCreationAttributes['status']>[] = [
+      'pending',
+      'installed',
+      'inspected',
+      'rejected',
+      'completed'
+    ];
+
+    if (typeof value === 'string' && allowedStatuses.includes(value as NonNullable<EmbeddedPartCreationAttributes['status']>)) {
+      return value as NonNullable<EmbeddedPartCreationAttributes['status']>;
+    }
+
+    return undefined;
+  }
+
   static async getAllEmbeddedParts(req: Request, res: Response) {
     try {
       const { page = 1, limit = 10, search = '', keyword = '', projectId, floorId, status } = req.query;
@@ -79,7 +104,9 @@ class EmbeddedPartController {
   // 创建单个预埋件
   static async createEmbeddedPart(req: Request, res: Response) {
     try {
-      const { projectId, name, type, modelNumber, description, location, coordinates, code, floorId, notes, coordinates2D, status } = req.body;
+      const { projectId, name, type, modelNumber, description, location, coordinates, code, floorId, notes, coordinates2D, status, elevation } = req.body;
+      const normalizedElevation = EmbeddedPartController.normalizeOptionalNumber(elevation);
+      const normalizedStatus = EmbeddedPartController.normalizeStatus(status);
 
       // 校验 projectId 必填
       if (!projectId) {
@@ -125,11 +152,12 @@ class EmbeddedPartController {
         coordinates,
         code,
         floorId,
+        ...(normalizedElevation !== undefined ? { elevation: normalizedElevation } : {}),
         notes,
         coordinates2D,
         qrCodeData,
         qrCodeUrl,
-        status: status || 'pending'
+        status: normalizedStatus || 'pending'
       });
 
       // 保存文件记录到modelFiles集合
@@ -191,14 +219,17 @@ class EmbeddedPartController {
           code,
           floorId,
           floorName,
+          elevation,
           notes,
           coordinates2D,
-          status,           // 新增：允许传入状态
-          statusHistory,    // 新增：允许传入历史记录
-          installationDate, // 新增
-          inspectionDate,   // 新增
-          inspectorId       // 新增
+          status,
+          statusHistory,
+          installationDate,
+          inspectionDate,
+          inspectorId
         } = part;
+        const normalizedElevation = EmbeddedPartController.normalizeOptionalNumber(elevation);
+        const normalizedStatus = EmbeddedPartController.normalizeStatus(status);
 
         // 解析 floorId
         let finalFloorId = floorId;
@@ -249,11 +280,12 @@ class EmbeddedPartController {
           coordinates,
           code,
           floorId: finalFloorId,
+          ...(normalizedElevation !== undefined ? { elevation: normalizedElevation } : {}),
           notes,
           coordinates2D,
           qrCodeData,
           qrCodeUrl,
-          status: status || 'pending', // 使用传入的状态，默认为 pending
+          status: normalizedStatus || 'pending', // 使用传入的状态，默认为 pending
           ...(statusHistory && { statusHistory }), // 如果有历史记录则传入
           ...(installationDate && { installationDate }),
           ...(inspectionDate && { inspectionDate }),
@@ -305,12 +337,22 @@ class EmbeddedPartController {
         location?: string;
         floorId?: string;
         floorName?: string;
+        elevation?: string | number;
         coordinates?: string | Record<string, any>;
         coordinates2D?: string | Record<string, any>;
         description?: string;
         notes?: string;
+        status?: string;
         [key: string]: any;
       }
+
+      const floorMap = new Map<string, string>();
+      const floors = await Floor.findByProjectId(projectId);
+      floors.forEach(floor => {
+        if (floor.name) {
+          floorMap.set(floor.name, floor.id);
+        }
+      });
 
       // 读取Excel文件
       const workbook = xlsx.read(file.buffer, { type: 'buffer' });
@@ -351,6 +393,17 @@ class EmbeddedPartController {
             }
           }
 
+          let finalFloorId = row.floorId;
+          if (!finalFloorId && row.floorName) {
+            finalFloorId = floorMap.get(row.floorName);
+            if (!finalFloorId) {
+              console.warn(`未找到楼层: ${row.floorName} (Project: ${projectId})`);
+            }
+          }
+
+          const normalizedElevation = EmbeddedPartController.normalizeOptionalNumber(row.elevation);
+          const normalizedStatus = EmbeddedPartController.normalizeStatus(row.status);
+
           // 生成预埋件唯一ID
           const partId = uuidv4();
           // 获取前端URL（用于生成可扫描跳转的二维码链接）
@@ -388,17 +441,12 @@ class EmbeddedPartController {
             modelNumber: row.modelNumber,
             description: row.description || row.notes || '',
             location: row.location,
-            floorId: row.floorId, // 注意：importEmbeddedParts 主要是解析 Excel 并直接插入，如果需要支持 Excel 里的 floorName 转 floorId，
-            // 最好是复用 batchCreateEmbeddedParts 或者在这里添加类似的查找逻辑。
-            // 鉴于 handleExcelUpload 前端是解析 Excel 后调用 batchCreateEmbeddedParts，
-            // 这个 importEmbeddedParts 方法可能用于旧的直接文件上传接口。
-            // 为了保持一致性，建议也加上查找逻辑，但目前需求主要是前端 Excel 解析上传。
-            // 暂时保持原样，或者如果用户确实用这个接口，也需要改。
-            // 观察前端代码，使用的是 batchCreateEmbeddedParts (POST JSON)，而不是 importEmbeddedParts (POST FILE)。
-            // 所以这里可以暂时不改，或者稍后优化。
+            floorId: finalFloorId,
+            ...(normalizedElevation !== undefined ? { elevation: normalizedElevation } : {}),
             coordinates,
             coordinates2D,
             notes: row.notes || row.description || '',
+            status: normalizedStatus || 'pending',
             qrCodeData,
             qrCodeUrl
           });

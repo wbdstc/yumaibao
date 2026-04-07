@@ -1059,17 +1059,18 @@ export default {
       const selectedProject = searchForm.projectId ? 
         projects.value.find(p => p.id === searchForm.projectId) : null
       
-      // 获取第一个楼层的ID作为示例
-      const sampleFloorId = floors.value.length > 0 ? floors.value[0].id : 'FLOOR_ID_EXAMPLE'
+      const primaryFloorName = floors.value.length > 0 ? floors.value[0].name : '一层'
+      const secondaryFloorName = floors.value.length > 1 ? floors.value[1].name : primaryFloorName
       
       const templateData = [
         {
           name: '预埋件1',
           code: 'EP001',
           modelNumber: 'M10',
-          type: '锚栓',
+          type: '平板式预埋件',
           location: '一层A区',
-          floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
+          floorName: primaryFloorName,
+          elevation: 3.25,
           status: 'pending',
           notes: '导入后请在BIM可视化页面标记坐标'
         },
@@ -1077,9 +1078,10 @@ export default {
           name: '预埋件2',
           code: 'EP002', 
           modelNumber: 'M12',
-          type: '螺栓',
+          type: '螺栓式预埋件',
           location: '二层B区',
-          floorName: floors.value.length > 0 ? floors.value[0].name : '一层',
+          floorName: secondaryFloorName,
+          elevation: 6.8,
           status: 'pending',
           notes: ''
         }

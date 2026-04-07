@@ -1,346 +1,351 @@
 <template>
-  <div class="login-container">
-    <div class="login-form-wrapper">
-      <div class="login-header">
-        <h1>预埋宝</h1>
-        <p>智能防错定位系统</p>
-      </div>
-      <el-form
-        ref="registerFormRef"
-        :model="registerForm"
-        :rules="registerRules"
-        class="login-form"
-      >
-        <el-form-item prop="name">
-          <el-input
-            v-model="registerForm.name"
-            placeholder="姓名"
-            prefix-icon="User"
-            clearable
-            autocomplete="off"
-          />
-        </el-form-item>
-        <el-form-item prop="phone">
-          <el-input
-            v-model="registerForm.phone"
-            placeholder="手机号"
-            prefix-icon="Mobile"
-            clearable
-            autocomplete="off"
-          />
-        </el-form-item>
-        <el-form-item prop="password">
-          <el-input
-            v-model="registerForm.password"
-            type="password"
-            placeholder="密码"
-            prefix-icon="Lock"
-            show-password
-            clearable
-          />
-        </el-form-item>
-        <el-form-item prop="confirmPassword">
-          <el-input
-            v-model="registerForm.confirmPassword"
-            type="password"
-            placeholder="确认密码"
-            prefix-icon="Lock"
-            show-password
-            clearable
-          />
-        </el-form-item>
-        <el-form-item prop="role">
-          <el-select
-            v-model="registerForm.role"
-            placeholder="选择角色"
-            class="w-full"
-          >
-            <el-option label="项目管理员" value="projectManager" />
-            <el-option label="项目工程师" value="projectEngineer" />
-            <el-option label="质检人员" value="qualityInspector" />
-            <el-option label="安装人员" value="installer" />
-            <el-option label="管理员" value="admin" />
-          </el-select>
-        </el-form-item>
-        <el-form-item prop="projects" v-if="registerForm.role !== 'admin'">
-          <el-select
-            v-model="registerForm.projects"
-            placeholder="选择项目"
-            class="w-full"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-          >
-            <el-option
-              v-for="project in projects"
-              :key="project.id"
-              :label="project.name"
-              :value="project.id"
+  <div class="auth-shell auth-register">
+    <div class="auth-stage">
+      <section class="auth-hero">
+        <div class="auth-hero-main">
+          <div class="auth-brand">
+            <div class="auth-brand-mark">
+              <img :src="logoFull" alt="Yumaibao" />
+            </div>
+            <div class="auth-brand-copy">
+              <strong>预埋宝</strong>
+              <span>Embedded Control Console</span>
+            </div>
+          </div>
+
+          <div class="auth-hero-copy">
+            <p class="auth-kicker">Access Provisioning</p>
+            <h1>为现场成员快速开通账号，让项目协同从第一天就走在一条线上。</h1>
+            <p class="auth-copy">
+              注册时即可绑定角色和项目范围，减少后续人工分配与切换成本。
+            </p>
+          </div>
+        </div>
+
+        <div class="auth-hero-foot">
+          <div class="auth-signal-strip">
+            <article
+              v-for="item in registerHighlights"
+              :key="item.title"
+              class="auth-signal"
+            >
+              <span>{{ item.index }}</span>
+              <strong>{{ item.title }}</strong>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-panel">
+        <div class="auth-brand auth-brand-panel">
+          <div class="auth-brand-mark auth-brand-mark-panel">
+            <img :src="logoFull" alt="Yumaibao" />
+          </div>
+          <div class="auth-brand-copy">
+            <strong>创建平台账号</strong>
+            <span>按角色和项目范围初始化权限</span>
+          </div>
+        </div>
+
+        <div class="auth-form-head">
+          <p class="section-kicker">账户注册</p>
+          <h2>添加新的协同成员</h2>
+          <p class="auth-panel-copy">
+            完成基础信息后，系统会立即创建账户，并自动登录进入平台。
+          </p>
+        </div>
+
+        <el-form
+          ref="registerFormRef"
+          :model="registerForm"
+          :rules="registerRules"
+          class="auth-form"
+        >
+          <el-form-item prop="name">
+            <el-input
+              v-model="registerForm.name"
+              placeholder="姓名"
+              prefix-icon="User"
+              clearable
+              autocomplete="off"
             />
-          </el-select>
-          <div class="el-form-item__help">* 安装人员和质检人员必须选择至少一个项目</div>
-        </el-form-item>
-        
-        <!-- 项目选择，仅对安装人员和质检人员显示 -->
-        <el-form-item v-if="showProjectSelect" prop="projects">
-          <el-select
-            v-model="registerForm.projects"
-            placeholder="选择项目"
-            multiple
-            collapse-tags
-            class="w-full"
-          >
-            <el-option
-              v-for="project in projects"
-              :key="project.id"
-              :label="project.name"
-              :value="project.id"
+          </el-form-item>
+
+          <el-form-item prop="phone">
+            <el-input
+              v-model="registerForm.phone"
+              placeholder="手机号"
+              prefix-icon="Mobile"
+              clearable
+              autocomplete="off"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
+          </el-form-item>
+
+          <el-form-item prop="password">
+            <el-input
+              v-model="registerForm.password"
+              type="password"
+              placeholder="密码"
+              prefix-icon="Lock"
+              show-password
+              clearable
+            />
+          </el-form-item>
+
+          <el-form-item prop="confirmPassword">
+            <el-input
+              v-model="registerForm.confirmPassword"
+              type="password"
+              placeholder="确认密码"
+              prefix-icon="Lock"
+              show-password
+              clearable
+            />
+          </el-form-item>
+
+          <el-form-item prop="role">
+            <el-select
+              v-model="registerForm.role"
+              placeholder="选择角色"
+              class="w-full"
+            >
+              <el-option
+                v-for="item in roleOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item v-if="showProjectSelect" prop="projects">
+            <el-select
+              v-model="registerForm.projects"
+              placeholder="绑定项目"
+              class="w-full"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+            >
+              <el-option
+                v-for="project in projects"
+                :key="project.id"
+                :label="project.name"
+                :value="project.id"
+              />
+            </el-select>
+            <div class="project-help">
+              安装人员和质检人员至少需要绑定一个项目。
+            </div>
+          </el-form-item>
+
           <el-button
             type="primary"
             :loading="loading"
-            @click="handleRegister"
-            class="login-button"
+            class="auth-submit"
             native-type="submit"
+            @click="handleRegister"
           >
-            {{ loading ? '注册中...' : '注册' }}
+            {{ loading ? '正在注册...' : '创建并登录' }}
           </el-button>
-        </el-form-item>
-      </el-form>
-      <div class="login-footer">
-        <p>已有账号？<el-link type="primary" @click="goToLogin">立即登录</el-link></p>
-        <p>© 2023 预埋宝智能防错定位系统</p>
-      </div>
+        </el-form>
+
+        <div class="auth-footer">
+          <p>
+            已有账号？
+            <el-link type="primary" class="auth-link" @click="goToLogin">返回登录</el-link>
+          </p>
+          <p>© 2026 预埋宝智能防错定位系统</p>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
-<script>
-import { ref, reactive, onMounted, watch } from 'vue'
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/index'
 import api from '../api/index'
+import logoFull from '../assets/logo-full.png'
 
-export default {
-  name: 'Register',
-  setup() {
-    const router = useRouter()
-    const userStore = useUserStore()
-    const registerFormRef = ref(null)
-    const loading = ref(false)
-    
-    const registerForm = reactive({
-      name: '',
-      phone: '',
-      password: '',
-      confirmPassword: '',
-      role: 'installer', // 默认角色为安装人员
-      projects: [] // 项目选择字段
-    })
-    
-    // 项目列表
-    const projects = ref([]);
-    // 是否显示项目选择
-    const showProjectSelect = ref(false);
-    
-    // 监听角色变化，控制是否显示项目选择
-    watch(() => registerForm.role, (newRole) => {
-      showProjectSelect.value = ['installer', 'qualityInspector'].includes(newRole);
-    });
-    
-    // 获取项目列表
-    onMounted(async () => {
-      try {
-        const response = await api.project.getProjects();
-        projects.value = response;
-      } catch (error) {
-        console.error('获取项目列表失败:', error);
-        ElMessage.error('获取项目列表失败');
-      }
-    });
-    
-    const registerRules = {
-      name: [
-        { required: true, message: '请输入姓名', trigger: 'blur' },
-        { min: 2, max: 20, message: '姓名长度在 2 到 20 个字符', trigger: 'blur' }
-      ],
-      phone: [
-        { required: true, message: '请输入手机号', trigger: 'blur' },
-        { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }
-      ],
-      password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' }
-      ],
-      confirmPassword: [
-        { required: true, message: '请确认密码', trigger: 'blur' },
-        { validator: (rule, value, callback) => {
-            if (value !== registerForm.password) {
-              callback(new Error('两次输入密码不一致'))
-            } else {
-              callback()
-            }
-          },
-          trigger: 'blur'
+defineOptions({
+  name: 'Register'
+})
+
+const router = useRouter()
+const userStore = useUserStore()
+
+const registerFormRef = ref(null)
+const loading = ref(false)
+const projects = ref([])
+
+const roleOptions = [
+  { label: '项目经理', value: 'projectManager' },
+  { label: '项目工程师', value: 'projectEngineer' },
+  { label: '质检人员', value: 'qualityInspector' },
+  { label: '安装人员', value: 'installer' },
+  { label: '系统管理员', value: 'admin' }
+]
+
+const registerHighlights = [
+  { index: '01', title: '角色即入口', description: '创建账号时就定义操作视图，减少后续培训和切换成本。' },
+  { index: '02', title: '项目范围清晰', description: '安装和质检角色直接绑定项目，进入系统即可开始处理任务。' },
+  { index: '03', title: '注册后自动登录', description: '人员创建完成后立即进入平台，无需再次手动认证。' }
+]
+
+const registerForm = reactive({
+  name: '',
+  phone: '',
+  password: '',
+  confirmPassword: '',
+  role: 'installer',
+  projects: []
+})
+
+const showProjectSelect = computed(() =>
+  ['installer', 'qualityInspector'].includes(registerForm.role)
+)
+
+const registerRules = {
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { min: 2, max: 20, message: '姓名长度应为 2 到 20 位', trigger: 'blur' }
+  ],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度应为 6 到 20 位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认密码', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== registerForm.password) {
+          callback(new Error('两次输入的密码不一致'))
+          return
         }
-      ],
-      role: [
-        { required: true, message: '请选择角色', trigger: 'change' }
-      ],
-      projects: [
-        {
-          required: true,
-          message: '请选择至少一个项目',
-          trigger: 'change',
-          validator: (rule, value, callback) => {
-            // 只有安装人员和质检人员需要选择项目
-            if ((registerForm.role === 'installer' || registerForm.role === 'qualityInspector') && (!value || value.length === 0)) {
-              callback(new Error('请选择至少一个项目'))
-            } else {
-              callback()
-            }
-          }
+
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ],
+  role: [
+    { required: true, message: '请选择角色', trigger: 'change' }
+  ],
+  projects: [
+    {
+      validator: (rule, value, callback) => {
+        if (showProjectSelect.value && (!value || value.length === 0)) {
+          callback(new Error('请至少绑定一个项目'))
+          return
         }
-      ]
+
+        callback()
+      },
+      trigger: 'change'
     }
-    
-    const handleRegister = async () => {
-      if (!registerFormRef.value) return
-      
-      registerFormRef.value.validate((valid) => {
-        if (valid) {
-          loading.value = true
-          
-          // 准备注册数据，移除后端不需要的字段
-          const registerData = {
-            name: registerForm.name,
-            phone: registerForm.phone,
-            password: registerForm.password,
-            role: registerForm.role,
-            projects: registerForm.projects
-          }
-          
-          // 调用注册API
-          api.user.register(registerData)
-            .then(response => {
-              ElMessage.success('注册成功')
-              // 注册成功后自动登录
-              return api.user.login({
-                phone: registerForm.phone,
-                password: registerForm.password
-              })
-            })
-            .then(loginResponse => {
-              // 响应拦截器已经返回了response.data，所以loginResponse直接包含user和token
-              userStore.login(loginResponse.user, loginResponse.token)
-              // 跳转到首页
-              router.push('/')
-            })
-            .catch(error => {
-              ElMessage.error(error.response?.data?.message || '注册失败，请重试')
-            })
-            .finally(() => {
-              loading.value = false
-            })
-        } else {
-          return false
-        }
-      })
-    }
-    
-    const goToLogin = () => {
-      router.push('/login')
-    }
-    
-    return {
-      registerFormRef,
-      registerForm,
-      registerRules,
-      loading,
-      handleRegister,
-      goToLogin,
-      projects
-    }
+  ]
+}
+
+const fetchProjects = async () => {
+  try {
+    const response = await api.project.getProjects()
+    projects.value = response
+  } catch (error) {
+    ElMessage.error('获取项目列表失败')
   }
 }
+
+const handleRegister = async () => {
+  if (!registerFormRef.value) {
+    return
+  }
+
+  const valid = await registerFormRef.value.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+
+  loading.value = true
+
+  try {
+    const registerData = {
+      name: registerForm.name,
+      phone: registerForm.phone,
+      password: registerForm.password,
+      role: registerForm.role,
+      projects: registerForm.projects
+    }
+
+    await api.user.register(registerData)
+    ElMessage.success('注册成功')
+
+    const loginResponse = await api.user.login({
+      phone: registerForm.phone,
+      password: registerForm.password
+    })
+
+    userStore.login(loginResponse.user, loginResponse.token)
+    router.push('/')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '注册失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+const goToLogin = () => {
+  router.push('/login')
+}
+
+onMounted(() => {
+  fetchProjects()
+})
 </script>
 
 <style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background-color: #f5f7fa;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.auth-register::before {
+  background-image:
+    linear-gradient(120deg, rgba(7, 17, 34, 0.18), rgba(7, 17, 34, 0.22)),
+    url('../assets/1login-bg.jpg');
 }
 
-.login-form-wrapper {
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  padding: 32px;
-  width: 100%;
-  max-width: 400px;
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.login-header h1 {
-  color: #1890ff;
-  font-size: 28px;
-  margin: 0 0 8px 0;
-}
-
-.login-form {
-  width: 100%;
-}
-
-.login-form .el-form-item {
+.auth-brand-panel {
   margin-bottom: 24px;
+  gap: 12px;
 }
 
-.login-button {
+.auth-brand-mark-panel {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.12);
+  padding: 6px;
+}
+
+.project-help {
+  margin-top: 10px;
+  color: var(--app-text-soft);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.auth-submit {
   width: 100%;
-  height: 40px;
-  font-size: 16px;
+  min-height: 46px;
+  margin-top: 4px;
+  font-size: 1rem;
 }
 
-.login-footer {
-  text-align: center;
-  margin-top: 24px;
-  color: #999;
-  font-size: 14px;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .login-form-wrapper {
-    padding: 20px;
-    margin: 0 16px;
-  }
-  
-  .login-header h1 {
-    font-size: 24px;
-  }
-}
-
-@media (max-width: 480px) {
-  .login-form-wrapper {
-    padding: 16px;
-    margin: 0 8px;
-  }
-  
-  .login-header h1 {
-    font-size: 20px;
-  }
+.auth-panel :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 </style>

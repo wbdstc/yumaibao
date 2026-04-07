@@ -33,7 +33,7 @@ class UserController {
       // 检查手机号是否已存在
       const existingUser = await User.findByPhone(phone);
       if (existingUser) {
-        return res.status(400).json({ message: '该手机号已被注册' });
+        return res.status(409).json({ message: '该手机号已注册' });
       }
       
       // 哈希密码
@@ -87,6 +87,14 @@ class UserController {
   static async login(req: Request, res: Response) {
     try {
       const { email, phone, password } = req.body as LoginRequest;
+
+      if (!phone && !email) {
+        return res.status(400).json({ message: '请输入手机号或邮箱' });
+      }
+
+      if (!password) {
+        return res.status(400).json({ message: '请输入密码' });
+      }
       
       // 查找用户 - 优先使用手机号，其次使用邮箱
       let user;
@@ -97,12 +105,12 @@ class UserController {
       }
       
       if (!user) {
-        return res.status(401).json({ message: '用户名或密码错误' });
+        return res.status(404).json({ message: phone ? '该手机号未注册' : '该邮箱未注册' });
       }
       
       // 验证密码
       if (!verifyPassword(password, user.password)) {
-        return res.status(401).json({ message: '用户名或密码错误' });
+        return res.status(401).json({ message: '密码错误' });
       }
       
       // 生成JWT令牌

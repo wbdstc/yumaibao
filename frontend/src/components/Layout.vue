@@ -1,592 +1,789 @@
 <template>
-  <div class="app-container page-transition">
-    <!-- 侧边导航栏 -->
-    <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <div class="logo">
-        <div class="logo-container">
-          <img 
-            v-if="!sidebarCollapsed" 
-            src="../assets/logo-full.png" 
-            alt="预埋宝"
-            class="logo-img logo-img-full"
-          />
-          <span v-if="!sidebarCollapsed" class="logo-text">预埋宝</span>
-          <img 
-            v-else 
-            src="../assets/logo-icon.png" 
-            alt="预"
-            class="logo-img logo-img-icon"
-          />
+  <div class="layout-shell">
+    <transition name="overlay-fade">
+      <div
+        v-if="isMobile && mobileMenuOpen"
+        class="sidebar-overlay"
+        @click="mobileMenuOpen = false"
+      />
+    </transition>
+
+    <aside
+      class="sidebar"
+      :class="{
+        collapsed: menuCollapsed,
+        mobile: isMobile,
+        open: mobileMenuOpen
+      }"
+    >
+      <div class="brand-panel" :class="{ compact: menuCollapsed && !isMobile }" @click="handleNavigate(defaultRoute)">
+        <div class="brand-mark">
+          <img class="brand-logo" :src="logoFull" alt="Yumaibao" />
+        </div>
+        <div v-if="!menuCollapsed || isMobile" class="brand-copy">
+          <strong>预埋宝</strong>
+          <span>现场协同控制台</span>
         </div>
       </div>
+
+      <div v-if="!menuCollapsed || isMobile" class="sidebar-meta">
+        <span class="sidebar-meta-label">当前身份</span>
+        <strong>{{ roleLabel }}</strong>
+      </div>
+
       <el-menu
-        :default-active="activeIndex"
         class="sidebar-menu"
-        router
-        :collapse="sidebarCollapsed"
+        :default-active="activeIndex"
+        :collapse="menuCollapsed"
+        :collapse-transition="false"
+        :default-openeds="['bim-group']"
+        unique-opened
+        @select="handleMenuSelect"
       >
-        <!-- 仪表盘菜单项 - 仅管理员、项目经理和工程师可见 -->
-        <el-menu-item index="/" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-          <el-icon><House /></el-icon>
-          <template #title>
-            <span>仪表盘</span>
-          </template>
-        </el-menu-item>
-        <!-- 项目管理菜单项 - 仅管理员、项目经理和工程师可见 -->
-        <el-menu-item index="/projects" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-          <el-icon><OfficeBuilding /></el-icon>
-          <template #title>
-            <span>项目管理</span>
-          </template>
-        </el-menu-item>
-        <!-- BIM可视化子菜单 -->
-        <el-sub-menu index="/bim">
-          <template #title>
-            <el-icon><PictureFilled /></el-icon>
-            <span>BIM可视化</span>
-          </template>
-          <!-- BIM可视化主页面 - 所有角色可见 -->
-          <el-menu-item index="/bim">
-            <el-icon><Monitor /></el-icon>
-            <span>预埋件定位</span>
+        <template v-for="item in filteredNavItems" :key="item.index">
+          <el-sub-menu v-if="item.children" :index="item.index">
+            <template #title>
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
+            </template>
+            <el-menu-item
+              v-for="child in item.children"
+              :key="child.index"
+              :index="child.index"
+            >
+              <el-icon><component :is="child.icon" /></el-icon>
+              <span>{{ child.label }}</span>
+            </el-menu-item>
+          </el-sub-menu>
+
+          <el-menu-item v-else :index="item.index">
+            <el-icon><component :is="item.icon" /></el-icon>
+            <template #title>
+              <span>{{ item.label }}</span>
+            </template>
           </el-menu-item>
-          <!-- 模型管理页面 - 仅管理员、项目经理和工程师可见 -->
-          <el-menu-item index="/model-management" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-            <el-icon><DocumentAdd /></el-icon>
-            <span>模型管理</span>
-          </el-menu-item>
-        </el-sub-menu>
-        <!-- 预埋件管理菜单项 - 仅管理员、项目经理和工程师可见 -->
-        <el-menu-item index="/embedded-parts" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-          <el-icon><Box /></el-icon>
-          <template #title>
-            <span>预埋件管理</span>
-          </template>
-        </el-menu-item>
-        <!-- 扫码管理菜单项 -->
-        <el-menu-item index="/scan" v-if="['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-          <el-icon><View /></el-icon>
-          <template #title>
-            <span>扫码管理</span>
-          </template>
-        </el-menu-item>
-        <!-- 用户管理菜单项 -->
-        <el-menu-item index="/users" v-if="userStore.userInfo?.role === 'admin'">
-          <el-icon><User /></el-icon>
-          <template #title>
-            <span>用户管理</span>
-          </template>
-        </el-menu-item>
-        <!-- 项目统计菜单项 - 所有角色可见 -->
-        <el-menu-item index="/project-statistics">
-          <el-icon><TrendCharts /></el-icon>
-          <template #title>
-            <span>项目统计</span>
-          </template>
-        </el-menu-item>
-        <!-- 信息中心菜单项 - 所有角色可见 -->
-        <el-menu-item index="/manual">
-          <el-icon><Guide /></el-icon>
-          <template #title>
-            <span>信息中心</span>
-          </template>
-        </el-menu-item>
+        </template>
       </el-menu>
+
+      <div v-if="!menuCollapsed || isMobile" class="sidebar-footer">
+        <p>统一管理项目、模型、扫码与现场状态。</p>
+        <button class="sidebar-footer-action" type="button" @click="handleNavigate('/manual')">
+          打开帮助中心
+        </button>
+      </div>
     </aside>
 
-    <!-- 主内容区域 -->
-    <main class="main-content">
-      <!-- 顶部导航栏 -->
-      <header class="top-header">
-        <div class="header-left">
-          <el-icon class="menu-toggle" @click="toggleSidebar"><Menu /></el-icon>
+    <main class="main-panel">
+      <header class="topbar surface-panel">
+        <div class="topbar-left">
+          <button class="sidebar-toggle" type="button" @click="toggleSidebar">
+            <el-icon><Menu /></el-icon>
+          </button>
+          <div class="page-copy">
+            <p class="section-kicker">Yumaibao Workspace</p>
+            <h1>{{ pageTitle }}</h1>
+            <p>{{ pageSubtitle }}</p>
+          </div>
         </div>
-        <div class="header-right">
+
+        <div class="topbar-right">
+          <div class="topbar-chip topbar-chip-date">
+            <span class="chip-dot" />
+            {{ currentDateLabel }}
+          </div>
+          <div class="topbar-chip topbar-chip-role">{{ roleLabel }}</div>
+
           <el-dropdown>
-            <span class="user-info">
-              <el-avatar :size="32" :src="userStore.userInfo?.avatar || ''">{{ userStore.userInfo?.name?.[0] || '用' }}</el-avatar>
-              <span>{{ userStore.userInfo?.name || '用户' }}</span>
-              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </span>
+            <button class="user-trigger" type="button">
+              <el-avatar :size="38" :src="userStore.userInfo?.avatar || ''">
+                {{ avatarFallback }}
+              </el-avatar>
+              <span class="user-trigger-copy">
+                <strong>{{ userStore.userInfo?.name || '用户' }}</strong>
+                <small>{{ userStore.userInfo?.phone || '账号已登录' }}</small>
+              </span>
+              <el-icon><ArrowDown /></el-icon>
+            </button>
             <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item @click="$router.push('/profile')">
-              <el-icon><User /></el-icon>
-              个人信息
-            </el-dropdown-item>
-            <el-dropdown-item @click="$router.push('/settings')">
-              <el-icon><Setting /></el-icon>
-              系统设置
-            </el-dropdown-item>
-            <el-dropdown-item divided @click="handleLogout">
-              <el-icon><SwitchButton /></el-icon>
-              退出登录
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="handleNavigate('/profile')">
+                  <el-icon><User /></el-icon>
+                  个人中心
+                </el-dropdown-item>
+                <el-dropdown-item @click="handleNavigate('/settings')">
+                  <el-icon><Setting /></el-icon>
+                  系统设置
+                </el-dropdown-item>
+                <el-dropdown-item divided @click="handleLogout">
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
           </el-dropdown>
         </div>
       </header>
 
-      <!-- 内容区域 -->
       <div class="content-wrapper">
         <router-view />
       </div>
     </main>
 
-    <!-- 移动端底部导航栏 -->
-    <div class="mobile-bottom-nav">
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/' }" @click="$router.push('/')">
-        <el-icon><House /></el-icon>
-        <span>仪表盘</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/projects' }" @click="$router.push('/projects')" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-        <el-icon><OfficeBuilding /></el-icon>
-        <span>项目管理</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/bim' }" @click="$router.push('/bim')" v-if="['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer'].includes(userStore.userInfo?.role)">
-        <el-icon><PictureFilled /></el-icon>
-        <span>BIM可视化</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/embedded-parts' }" @click="$router.push('/embedded-parts')" v-if="['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-        <el-icon><Box /></el-icon>
-        <span>预埋件管理</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/scan' }" @click="$router.push('/scan')" v-if="['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role)">
-        <el-icon><View /></el-icon>
-        <span>扫码管理</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/project-statistics' }" @click="$router.push('/project-statistics')">
-        <el-icon><TrendCharts /></el-icon>
-        <span>项目统计</span>
-      </div>
-      <div class="mobile-nav-item" :class="{ active: activeIndex === '/manual' }" @click="$router.push('/manual')">
-        <el-icon><Guide /></el-icon>
-        <span>信息中心</span>
-      </div>
-    </div>
+    <nav class="mobile-dock">
+      <button
+        v-for="item in mobileNavItems"
+        :key="item.index"
+        type="button"
+        class="mobile-dock-item"
+        :class="{ active: activeIndex === item.index }"
+        @click="handleNavigate(item.index)"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
+        <span>{{ item.label }}</span>
+      </button>
+    </nav>
   </div>
 </template>
 
-<script>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/index'
+import logoFull from '../assets/logo-full.png'
 import {
+  ArrowDown,
+  Box,
+  DocumentAdd,
+  Guide,
   House,
+  Menu,
+  Monitor,
   OfficeBuilding,
   PictureFilled,
-  Box,
-  Menu,
-  ArrowDown,
   Setting,
   SwitchButton,
-  View,
-  User,
   TrendCharts,
-  Guide
+  User,
+  View
 } from '@element-plus/icons-vue'
 
-export default {
-  name: 'Layout',
-  components: {
-    House,
-    OfficeBuilding,
-    PictureFilled,
-    Box,
-    Menu,
-    ArrowDown,
-    Setting,
-    SwitchButton,
-    View,
-    User,
-    TrendCharts,
-    Guide
+defineOptions({
+  name: 'Layout'
+})
+
+const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+
+const navItems = [
+  {
+    index: '/',
+    label: '仪表盘',
+    icon: House,
+    roles: ['projectManager', 'admin', 'projectEngineer']
   },
-  setup() {
-    const router = useRouter()
-    const userStore = useUserStore()
-    // 在移动端默认隐藏侧边栏
-    const sidebarCollapsed = ref(window.innerWidth <= 768)
-    
-    const activeIndex = computed(() => {
-      return router.currentRoute.value.path
+  {
+    index: '/projects',
+    label: '项目管理',
+    icon: OfficeBuilding,
+    roles: ['projectManager', 'admin', 'projectEngineer']
+  },
+  {
+    index: 'bim-group',
+    label: 'BIM 工作台',
+    icon: PictureFilled,
+    children: [
+      {
+        index: '/bim',
+        label: '预埋件定位',
+        icon: Monitor,
+        roles: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer']
+      },
+      {
+        index: '/model-management',
+        label: '模型管理',
+        icon: DocumentAdd,
+        roles: ['projectManager', 'admin', 'projectEngineer']
+      }
+    ]
+  },
+  {
+    index: '/embedded-parts',
+    label: '预埋件管理',
+    icon: Box,
+    roles: ['projectManager', 'admin', 'projectEngineer']
+  },
+  {
+    index: '/scan',
+    label: '扫码管理',
+    icon: View,
+    roles: ['installer', 'qualityInspector', 'projectManager', 'admin', 'projectEngineer']
+  },
+  {
+    index: '/users',
+    label: '用户管理',
+    icon: User,
+    roles: ['admin']
+  },
+  {
+    index: '/project-statistics',
+    label: '项目统计',
+    icon: TrendCharts,
+    roles: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer']
+  },
+  {
+    index: '/manual',
+    label: '信息中心',
+    icon: Guide,
+    roles: ['projectManager', 'admin', 'projectEngineer', 'qualityInspector', 'installer']
+  }
+]
+
+const pageMeta = [
+  { match: (path) => path === '/', title: '仪表盘', subtitle: '查看项目总览、现场风险和近期动态。' },
+  { match: (path) => path.startsWith('/projects'), title: '项目管理', subtitle: '集中维护项目生命周期、进度与基础配置。' },
+  { match: (path) => path.startsWith('/bim'), title: 'BIM 工作台', subtitle: '连接模型、构件定位与现场操作记录。' },
+  { match: (path) => path.startsWith('/model-management'), title: '模型管理', subtitle: '上传、校验并维护项目 BIM 模型。' },
+  { match: (path) => path.startsWith('/embedded-parts'), title: '预埋件管理', subtitle: '处理构件台账、状态、二维码与批量导入。' },
+  { match: (path) => path.startsWith('/scan'), title: '扫码管理', subtitle: '查看现场扫码、安装打卡与质检反馈。' },
+  { match: (path) => path.startsWith('/users'), title: '用户管理', subtitle: '维护账户、角色权限与项目成员。' },
+  { match: (path) => path.startsWith('/project-statistics'), title: '项目统计', subtitle: '追踪项目维度的数据表现与执行效率。' },
+  { match: (path) => path.startsWith('/manual'), title: '信息中心', subtitle: '查看说明文档、流程指引和帮助内容。' },
+  { match: (path) => path.startsWith('/profile'), title: '个人中心', subtitle: '更新个人资料、密码与登录信息。' },
+  { match: (path) => path.startsWith('/settings'), title: '系统设置', subtitle: '管理系统配置、默认参数与平台行为。' }
+]
+
+const roleTextMap = {
+  admin: '系统管理员',
+  projectManager: '项目经理',
+  projectEngineer: '项目工程师',
+  qualityInspector: '质检人员',
+  installer: '安装人员'
+}
+
+const sidebarCollapsed = ref(window.innerWidth < 1360)
+const isMobile = ref(window.innerWidth <= 960)
+const mobileMenuOpen = ref(false)
+
+const canAccess = (roles) => !roles || roles.includes(userStore.userInfo?.role)
+
+const defaultRoute = computed(() =>
+  ['projectManager', 'admin', 'projectEngineer'].includes(userStore.userInfo?.role) ? '/' : '/bim'
+)
+
+const filteredNavItems = computed(() =>
+  navItems
+    .map((item) => {
+      if (!item.children) {
+        return canAccess(item.roles) ? item : null
+      }
+
+      const children = item.children.filter((child) => canAccess(child.roles))
+      return children.length ? { ...item, children } : null
     })
-    
-    const toggleSidebar = () => {
-      sidebarCollapsed.value = !sidebarCollapsed.value
-    }
-    
-    const handleLogout = () => {
-      userStore.logout()
-      router.push('/login')
-    }
-    
-    return {
-      activeIndex,
-      userStore,
-      handleLogout,
-      sidebarCollapsed,
-      toggleSidebar
-    }
+    .filter(Boolean)
+)
+
+const mobileNavItems = computed(() => {
+  const preferredOrder = ['/', '/projects', '/bim', '/embedded-parts', '/scan', '/project-statistics', '/manual']
+  const leafItems = filteredNavItems.value.flatMap((item) => item.children || item)
+
+  return preferredOrder
+    .map((index) => leafItems.find((item) => item.index === index))
+    .filter(Boolean)
+})
+
+const activeIndex = computed(() => route.path)
+const menuCollapsed = computed(() => !isMobile.value && sidebarCollapsed.value)
+const matchedMeta = computed(() => pageMeta.find((item) => item.match(route.path)) || pageMeta[0])
+const pageTitle = computed(() => matchedMeta.value.title)
+const pageSubtitle = computed(() => matchedMeta.value.subtitle)
+const avatarFallback = computed(() => userStore.userInfo?.name?.slice(0, 1) || 'U')
+const roleLabel = computed(() => roleTextMap[userStore.userInfo?.role] || '平台用户')
+const currentDateLabel = computed(() =>
+  new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
+)
+
+const updateViewport = () => {
+  const nextIsMobile = window.innerWidth <= 960
+  isMobile.value = nextIsMobile
+
+  if (!nextIsMobile) {
+    mobileMenuOpen.value = false
+    sidebarCollapsed.value = window.innerWidth < 1360
   }
 }
+
+const handleNavigate = (path) => {
+  if (!path || path === route.path) {
+    mobileMenuOpen.value = false
+    return
+  }
+
+  router.push(path)
+  mobileMenuOpen.value = false
+}
+
+const handleMenuSelect = (index) => {
+  if (!index.startsWith('/')) {
+    return
+  }
+
+  handleNavigate(index)
+}
+
+const toggleSidebar = () => {
+  if (isMobile.value) {
+    mobileMenuOpen.value = !mobileMenuOpen.value
+    return
+  }
+
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+const handleLogout = () => {
+  userStore.logout()
+  router.push('/login')
+}
+
+watch(
+  () => route.path,
+  () => {
+    mobileMenuOpen.value = false
+  }
+)
+
+onMounted(() => {
+  updateViewport()
+  window.addEventListener('resize', updateViewport)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewport)
+})
 </script>
 
 <style scoped>
-.app-container {
+.layout-shell {
   display: flex;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  color: var(--app-text);
 }
 
-/* 侧边栏 - 建筑工程风格 */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(8, 14, 27, 0.48);
+  backdrop-filter: blur(6px);
+}
+
 .sidebar {
-  width: 220px;
-  background: linear-gradient(180deg, var(--construction-blue) 0%, var(--construction-blue-dark) 100%);
-  color: #fff;
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
-  border-right: 3px solid var(--safety-orange);
-  position: relative;
+  width: 288px;
+  height: 100vh;
+  padding: 20px 16px 18px;
+  background: var(--app-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 30px 0 60px rgba(6, 14, 28, 0.14);
+  transition: width 0.24s ease, transform 0.28s ease;
+  z-index: 25;
 }
 
-/* 侧边栏蓝图纹理叠加 */
 .sidebar::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 20px 20px;
+  inset: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 72%);
   pointer-events: none;
 }
 
-.sidebar-collapsed {
-  width: 64px;
+.sidebar.collapsed {
+  width: 96px;
 }
 
-.logo {
-  padding: 20px;
-  text-align: center;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%);
+.brand-panel {
   position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 24px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* logo区域底部装饰线 */
-.logo::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 20px;
-  right: 20px;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 0%, var(--safety-orange) 50%, transparent 100%);
-}
-
-.logo-container {
+.brand-mark {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px;
 }
 
-.logo-text {
+.brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(7, 15, 29, 0.16));
+}
+
+.brand-panel.compact {
+  justify-content: center;
+  padding: 12px 10px;
+}
+
+.brand-panel.compact .brand-mark {
+  width: 48px;
+  height: 48px;
+  padding: 6px;
+  border-radius: 16px;
+}
+
+.brand-copy strong {
+  display: block;
   color: #fff;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  white-space: nowrap;
+  font-size: 1.02rem;
+  letter-spacing: 0.02em;
+}
+
+.brand-copy span {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-sidebar-muted);
+  font-size: 0.78rem;
+}
+
+.sidebar-meta {
+  position: relative;
+  z-index: 1;
+  margin: 18px 0 20px;
+  padding: 0 10px;
+}
+
+.sidebar-meta-label {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(198, 209, 226, 0.58);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-/* 图片logo样式 */
-.logo-img {
-  margin: 0;
-  width: auto;
-  height: auto;
-  display: block;
-}
-
-/* 完整logo样式 */
-.logo-img-full {
-  width: 36px;
-  height: 36px;
-}
-
-/* 折叠状态下的图标样式 */
-.logo-img-icon {
-  width: 32px;
-  height: 32px;
+.sidebar-meta strong {
+  color: #f8fbff;
+  font-size: 0.96rem;
 }
 
 .sidebar-menu {
-  flex: 1;
-  border-right: none;
-  background-color: transparent;
-}
-
-.sidebar-menu :deep(.el-menu-item) {
-  color: rgba(255, 255, 255, 0.85);
-  border-left: 3px solid transparent;
-  transition: all 0.25s ease;
-  padding: 14px 16px;
-  font-size: 14px;
-  margin: 2px 8px;
-  border-radius: 4px;
-}
-
-.sidebar-menu :deep(.el-sub-menu__title) {
-  color: rgba(255, 255, 255, 0.9);
-  transition: all 0.25s ease;
-  padding: 14px 16px;
-  font-size: 14px;
-}
-
-.sidebar-menu :deep(.el-sub-menu__title:hover) {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu) {
-  background-color: rgba(0, 0, 0, 0.15);
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
-  color: rgba(255, 255, 255, 0.8);
-  background-color: transparent;
-  margin: 2px 8px;
-  border-radius: 4px;
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-left-color: var(--safety-orange);
-}
-
-.sidebar-menu :deep(.el-menu-item:hover) {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-left-color: var(--safety-orange);
-}
-
-.sidebar-menu :deep(.el-menu-item.is-active) {
-  background: linear-gradient(90deg, rgba(234, 88, 12, 0.25) 0%, rgba(234, 88, 12, 0.1) 100%);
-  color: #fff;
-  border-left-color: var(--safety-orange);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.3);
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item.is-active) {
-  background: linear-gradient(90deg, rgba(234, 88, 12, 0.25) 0%, rgba(234, 88, 12, 0.1) 100%);
-  color: #fff;
-  border-left-color: var(--safety-orange);
-  font-weight: 600;
-}
-
-/* 侧边栏图标样式 */
-.sidebar-menu :deep(.el-icon) {
-  font-size: 18px;
-  margin-right: 8px;
-}
-
-.sidebar-collapsed :deep(.el-icon) {
-  margin-right: 0 !important;
-}
-
-/* 主内容区域 */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background-color: var(--blueprint-bg);
-}
-
-/* 顶部导航栏 - 建筑风格 */
-.top-header {
-  height: 64px;
-  background: linear-gradient(180deg, #ffffff 0%, var(--cement-light) 100%);
-  border-bottom: 1px solid var(--steel-silver);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  box-shadow: var(--shadow-md);
   position: relative;
-}
-
-/* 顶部工程装饰条 */
-.top-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--safety-orange) 100%);
-}
-
-.top-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 1px;
-  background: linear-gradient(90deg, var(--construction-blue) 0%, var(--steel-silver) 50%, var(--construction-blue) 100%);
-}
-
-.menu-toggle {
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--construction-blue);
-  transition: all 0.25s ease;
-  padding: 10px;
-  border-radius: 6px;
+  z-index: 1;
+  flex: 1;
+  padding-right: 4px;
   background: transparent;
 }
 
-.menu-toggle:hover {
-  color: var(--safety-orange);
-  background-color: rgba(234, 88, 12, 0.08);
-  transform: scale(1.05);
+.sidebar-menu :deep(.el-menu-item),
+.sidebar-menu :deep(.el-sub-menu__title) {
+  height: 48px;
+  margin-bottom: 8px;
+  color: rgba(224, 232, 243, 0.72);
+  border-radius: 16px;
 }
 
-.user-info {
+.sidebar-menu :deep(.el-menu-item:hover),
+.sidebar-menu :deep(.el-sub-menu__title:hover) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-menu :deep(.el-menu-item.is-active) {
+  color: #fff;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.24) 0%, rgba(37, 99, 235, 0.06) 100%);
+  box-shadow: inset 0 0 0 1px rgba(74, 126, 255, 0.24);
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu) {
+  background: transparent;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
+  color: rgba(211, 221, 234, 0.68);
+  margin-left: 4px;
+}
+
+.sidebar-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-footer p {
+  margin: 0 0 14px;
+  color: rgba(223, 232, 243, 0.72);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.sidebar-footer-action {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+
+.main-panel {
+  flex: 1;
+  min-width: 0;
+  padding: 20px;
+}
+
+.topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 94px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sidebar-toggle {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--app-primary);
   cursor: pointer;
-  padding: 8px 16px;
-  border-radius: 6px;
-  transition: all 0.25s ease;
-  background: linear-gradient(135deg, #ffffff 0%, var(--cement-light) 100%);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--steel-silver);
 }
 
-.user-info:hover {
-  background: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-  border-color: var(--construction-blue-light);
+.page-copy h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 2vw, 2rem);
+  letter-spacing: -0.03em;
 }
 
-.user-info span {
-  margin-left: 10px;
-  color: var(--construction-blue);
+.page-copy p:last-child {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 0.95rem;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(244, 247, 252, 0.88);
+  border: 1px solid rgba(128, 145, 170, 0.16);
+  color: var(--app-text-muted);
+  font-size: 0.86rem;
   font-weight: 600;
-  letter-spacing: 0.3px;
 }
 
-/* 内容区域 */
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--app-success);
+  box-shadow: 0 0 0 6px rgba(19, 145, 109, 0.14);
+}
+
+.user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 10px 6px 6px;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(247, 250, 253, 0.9);
+  cursor: pointer;
+  color: var(--app-text);
+}
+
+.user-trigger-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+
+.user-trigger-copy strong {
+  font-size: 0.95rem;
+}
+
+.user-trigger-copy small {
+  margin-top: 2px;
+  color: var(--app-text-soft);
+  font-size: 0.78rem;
+}
+
 .content-wrapper {
-  flex: 1;
-  padding: clamp(16px, 2vw, 24px);
-  overflow-y: auto;
-  background-color: var(--blueprint-bg);
-  /* 内容区域蓝图网格 */
-  background-image:
-    linear-gradient(var(--blueprint-line-dark) 1px, transparent 1px),
-    linear-gradient(90deg, var(--blueprint-line-dark) 1px, transparent 1px),
-    linear-gradient(var(--blueprint-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--blueprint-line) 1px, transparent 1px);
-  background-size: 
-    100px 100px,
-    100px 100px,
-    20px 20px,
-    20px 20px;
+  min-height: calc(100vh - 134px);
+  overflow: auto;
 }
 
-/* 移动端底部导航栏 - 默认隐藏 */
-.mobile-bottom-nav {
+.mobile-dock {
   display: none;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  /* 移动端侧边栏 - 完全隐藏 */
-  .sidebar {
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.24s ease;
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 1180px) {
+  .topbar-chip-role {
     display: none;
-  }
-  
-  .main-content {
-    width: 100%;
-  }
-  
-  .content-wrapper {
-    padding: 16px;
-  }
-  
-  /* 移动端底部导航栏 - 仅在移动端显示 */
-  .mobile-bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 56px;
-    background: linear-gradient(135deg, var(--construction-blue) 0%, #1a2f49 100%);
-    border-top: 1px solid var(--steel-silver);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
-    z-index: 999;
-  }
-  
-  .mobile-nav-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 255, 255, 0.8);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    padding: 4px 0;
-  }
-  
-  .mobile-nav-item:hover,
-  .mobile-nav-item.active {
-    color: #fff;
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-  
-  .mobile-nav-item .el-icon {
-    font-size: 20px;
-    margin-bottom: 4px;
-  }
-  
-  .mobile-nav-item span {
-    font-size: 12px;
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
+  .layout-shell {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(84vw, 320px);
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-panel {
+    padding: 12px 12px 88px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 12px;
+    z-index: 10;
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .topbar-chip-role,
+  .topbar-chip-date {
+    display: none;
+  }
+
   .content-wrapper {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .mobile-dock {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 18;
+    display: flex;
+    gap: 8px;
     padding: 8px;
-    margin-bottom: 56px; /* 为底部导航栏留出空间 */
+    overflow-x: auto;
+    border-radius: 24px;
+    background: rgba(12, 21, 38, 0.86);
+    box-shadow: 0 24px 54px rgba(8, 20, 40, 0.26);
+    backdrop-filter: blur(16px);
   }
-  
-  .top-header {
-    padding: 0 12px;
-    height: 56px;
+
+  .mobile-dock-item {
+    min-width: 72px;
+    min-height: 60px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 18px;
+    background: transparent;
+    color: rgba(225, 233, 244, 0.72);
+    cursor: pointer;
+    flex-shrink: 0;
   }
-  
-  .logo h2 {
-    font-size: 18px;
+
+  .mobile-dock-item.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
   }
-  
-  .menu-toggle {
-    font-size: 20px;
+
+  .mobile-dock-item span {
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+  }
+
+  .topbar-right {
+    justify-content: space-between;
+  }
+
+  .user-trigger {
+    flex: 1;
+    justify-content: space-between;
   }
 }
 </style>
