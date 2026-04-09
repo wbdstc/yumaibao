@@ -112,8 +112,8 @@ class ReportController {
   // 生成项目进度报告
   static async generateProjectProgressReport(req: Request, res: Response) {
     try {
-      const reportFilters = this.extractReportFilters(req);
-      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+      const reportFilters = ReportController.extractReportFilters(req);
+      const { projects: reportProjects, embeddedParts: reportParts } = await ReportController.loadReportScope(reportFilters);
 
       if (reportFilters.projectId && reportProjects.length === 0) {
         return res.status(404).json({ message: '项目不存在' });
@@ -193,8 +193,8 @@ class ReportController {
   // 生成预埋件状态报告
   static async generateEmbeddedPartStatusReport(req: Request, res: Response) {
     try {
-      const reportFilters = this.extractReportFilters(req);
-      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+      const reportFilters = ReportController.extractReportFilters(req);
+      const { projects: reportProjects, embeddedParts: reportParts } = await ReportController.loadReportScope(reportFilters);
 
       if (reportFilters.projectId && reportProjects.length === 0) {
         return res.status(404).json({ message: '项目不存在' });
@@ -262,9 +262,9 @@ class ReportController {
         return res.status(400).json({ message: '不支持的报告格式' });
       }
 
-      const reportFilters = this.extractReportFilters(req);
+      const reportFilters = ReportController.extractReportFilters(req);
       reportFilters.projectId = exportProjectId;
-      const { projects: reportProjects, embeddedParts: reportParts } = await this.loadReportScope(reportFilters);
+      const { projects: reportProjects, embeddedParts: reportParts } = await ReportController.loadReportScope(reportFilters);
 
       if (reportProjects.length === 0) {
         return res.status(404).json({ message: '项目不存在' });

@@ -7,6 +7,7 @@
           v-model="selectedProjectId"
           placeholder="选择项目"
           @change="handleProjectChange"
+          :disabled="isRestrictedUser"
           style="width: 200px; margin-right: 10px"
         >
           <el-option
@@ -69,7 +70,7 @@
       <div class="mobile-controls">
         <div class="control-group">
           <h3>项目选择</h3>
-          <el-select v-model="selectedProjectId" placeholder="选择项目" @change="handleProjectChange" class="mobile-select">
+          <el-select v-model="selectedProjectId" placeholder="选择项目" @change="handleProjectChange" :disabled="isRestrictedUser" class="mobile-select">
             <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
           </el-select>
         </div>
@@ -309,7 +310,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Refresh, Menu, Camera, Switch, Check, Select, MapLocation } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/index.js'
@@ -392,6 +393,15 @@ const model3D = computed(() => {
   return models.value.find(m => m.type === '3d') || null
 })
 
+const isRestrictedUser = computed(() => {
+  const role = userStore.userRole || ''
+  return role === 'installer' || role === 'qualityInspector'
+})
+
+const userProjects = computed<string[]>(() => {
+  return userStore.userInfo?.projects || []
+})
+
 // 权限检查
 const canConfirmInstallation = computed(() => {
   const role = userStore.userRole || ''
@@ -405,10 +415,45 @@ const canConfirmInspection = computed(() => {
 
 // ==================== 数据获取方法 ====================
 
+const isProjectAccessible = (projectId?: string | null) => {
+  if (!projectId) return false
+  if (!isRestrictedUser.value) return true
+  return userProjects.value.includes(projectId)
+}
+
+const clearProjectContext = () => {
+  selectedProjectId.value = ''
+  selectedFloorId.value = ''
+  selectedModel.value = null
+  floors.value = []
+  models.value = []
+  embeddedParts.value = []
+  selectedPart.value = null
+}
+
 const getProjects = async () => {
   try {
     const response = await api.project.getProjects({})
-    projects.value = response.data || response || []
+    const projectList = Array.isArray(response?.data)
+      ? response.data
+      : (Array.isArray(response) ? response : [])
+
+    if (isRestrictedUser.value) {
+      projects.value = projectList.filter((project: any) => isProjectAccessible(project.id))
+
+      if (projects.value.length === 0) {
+        clearProjectContext()
+        ElMessage.warning('当前账号未绑定可访问项目')
+        return
+      }
+
+      if (!selectedProjectId.value || !isProjectAccessible(selectedProjectId.value)) {
+        await handleProjectChange(projects.value[0].id)
+      }
+      return
+    }
+
+    projects.value = projectList
   } catch (error) {
     console.error('获取项目列表失败:', error)
     ElMessage.error('获取项目列表失败')
@@ -458,10 +503,23 @@ const getEmbeddedParts = async (projectId: string, floorId?: string) => {
 
 const handleProjectChange = async (projectId: string) => {
   if (!projectId) return
+
+  if (!isProjectAccessible(projectId)) {
+    ElMessage.warning('当前账号只能查看所属项目')
+
+    const fallbackProjectId = projects.value[0]?.id
+    if (fallbackProjectId && fallbackProjectId !== selectedProjectId.value) {
+      await handleProjectChange(fallbackProjectId)
+    } else if (!fallbackProjectId) {
+      clearProjectContext()
+    }
+    return
+  }
   
   selectedProjectId.value = projectId
   selectedFloorId.value = ''
   selectedModel.value = null
+  selectedPart.value = null
   
   await getFloors(projectId)
   await getModels(projectId)
@@ -893,6 +951,12 @@ onMounted(async () => {
       const res = await api.embeddedPart.getEmbeddedPart(partId)
       const part = res.data || res
       if (part && part.projectId) {
+        if (!isProjectAccessible(part.projectId)) {
+          ElMessage.error('当前账号无权查看该预埋件所属项目')
+          await router.replace('/bim')
+          return
+        }
+
         // 2. 切换到对应的项目
         await handleProjectChange(part.projectId)
         
